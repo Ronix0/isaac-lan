@@ -4,7 +4,7 @@ local labels, commands = {}, {}
 local renderedPortraits = {}
 local scaledLabels, renderedMarks = {}, {}
 local labelPositions = {}
-local options = { { flag = 1, key = "friendlyFire", name = "队友伤害", shortName = "友伤" } }
+local options = { { flag = 1, key = "friendlyFire", name = "Friendly Fire", shortName = "FF" } }
 local noop = function() end
 local remembered = { "", 29506 }
 local savedCount = 0
@@ -153,7 +153,7 @@ _IsaacLan = {
         return {
             ["1001"] = {
                 id = 1001,
-                name = "恶魔形态",
+                name = "Demon Form",
                 character = 23,
                 difficulty = 0,
                 nextBag = 1,
@@ -213,12 +213,12 @@ for _ = 1, 4 do
     draw(39)
 end
 draw()
-assert(labels["1001 恶魔形态"] and labels["返回"])
+assert(labels["1001 Demon Form"] and labels["Back"])
 draw(13)
 draw()
 assert(status.challenge == 1001 and status.choice0 == 23 and status.ready0 == 0)
-local accent = assert(labels["挑战：1001 恶魔形态"])
-assert(accent[1] == 0.45 and not labels["继续上次联机"])
+local accent = assert(labels["Challenge: 1001 Demon Form"])
+assert(accent[1] == 0.45 and not labels["Resume Previous Session"])
 -- Character row is locked, even when unready; mode row can return to normal.
 draw(38)
 draw(38)
@@ -229,18 +229,18 @@ draw(40)
 draw(40)
 draw(39)
 draw()
-assert(status.challenge == 0 and labels["普通"] and labels["继续上次联机"])
+assert(status.challenge == 0 and labels["Normal"] and labels["Resume Previous Session"])
 -- Ordinary character cycling uses the personal save's list, with catalog names.
 _IsaacLanMenuOpen(true)
 status.choice0 = 0
 draw(39)
 draw()
-assert(status.choice0 == 23 and labels["里·该隐"])
+assert(status.choice0 == 23 and labels["Tainted Cain"])
 assert(renderedPortraits[1][1] == "native-tainted.anm2" and renderedPortraits[1][2] == "03_Cain")
 draw(39)
 assert(status.choice0 == 0)
 draw()
-assert(labels["以撒"] and not labels["Isaac"])
+assert(labels["Isaac"] and not labels["Isaac"])
 characters = { 0 }
 draw(39)
 assert(status.choice0 == 0)
@@ -249,12 +249,12 @@ characters = { 0, 23 }
 local longName = "LAN Extremely Long Mod Character Name"
 catalog["4096"] = {
     name = longName,
-    animation = "目录角色",
+    animation = "Catalog Character",
     portraitAnm2Path = "mod-menu.anm2",
     tainted = false,
 }
 catalog["41"] = {
-    name = "无菜单画像",
+    name = "No Menu Portrait",
     animation = "missing",
     portraitAnm2Path = "mod-menu.anm2",
     tainted = true,
@@ -273,12 +273,12 @@ for _, label in ipairs(scaledLabels) do
     end
 end
 assert(nameRenders == 2, "Long Mod name did not fit both the row and player card")
-assert(renderedPortraits[1][1] == "mod-menu.anm2" and renderedPortraits[1][2] == "目录角色")
+assert(renderedPortraits[1][1] == "mod-menu.anm2" and renderedPortraits[1][2] == "Catalog Character")
 draw(39)
 assert(status.choice0 == 23)
 draw(39)
 draw()
-assert(status.choice0 == 41 and labels["无菜单画像"])
+assert(status.choice0 == 41 and labels["No Menu Portrait"])
 assert(renderedPortraits[1][2] == "00_Random")
 draw(39)
 assert(status.choice0 == 0)
@@ -291,14 +291,14 @@ catalog["42"] = {
 }
 characters, status.choice0 = { 42 }, 42
 draw()
-assert(labels["Isaac"] and not labels["以撒"])
+assert(labels["Isaac"] and not labels["Isaac"])
 for _, role in ipairs({
-    { 1, "Magdalene", false, "抹大拉" },
+    { 1, "Magdalene", false, "Magdalene" },
     { 4, "???", false, "???" },
-    { 19, "Jacob", false, "雅各与以扫" },
-    { 21, "Isaac", true, "里·以撒" },
-    { 25, "???", true, "里·???" },
-    { 37, "Jacob", true, "里·雅各" },
+    { 19, "Jacob", false, "Jacob & Esau" },
+    { 21, "Isaac", true, "Tainted Isaac" },
+    { 25, "???", true, "Tainted ???" },
+    { 37, "Jacob", true, "Tainted Jacob" },
 }) do
     catalog[tostring(role[1])] = {
         name = role[2],
@@ -332,12 +332,12 @@ available = true
 status.challenge, status.hosting, status.slot = 1001, 0, 1
 _IsaacLanMenuOpen(true)
 draw()
-assert(labels["挑战：1001 恶魔形态"])
+assert(labels["Challenge: 1001 Demon Form"])
 status.eligible1 = false
 draw(40)
 count = #commands
 draw(13)
-assert(#commands == count and labels["P2 需解锁底片与里该隐"])
+assert(#commands == count and labels["P2 must unlock The Negative and Tainted Cain"])
 status.eligible1 = true
 _IsaacLanMenuOpen(true)
 draw()
@@ -352,16 +352,16 @@ for n = 2, 4 do
         status.slot = slot
         draw(0, false)
         for label in pairs(labels) do
-            assert(not label:find("挑战") and not label:find("百宝袋"))
+            assert(not label:find("Challenge") and not label:find("Bag of Crafting"))
         end
     end
 end
 status.hosting, status.slot = 1, 0
 draw()
-assert(labels["结束挑战（不保存）"] and not labels["保存并结束联机"])
+assert(labels["End Challenge (Do Not Save)"] and not labels["Save and End Multiplayer"])
 status.challenge = 0
 draw()
-assert(labels["保存并结束联机"])
+assert(labels["Save and End Multiplayer"])
 local actions = dofile(root .. "/src/bridge/presentation/menu_model.lua")(
     _IsaacLan.net_phases(),
     _IsaacLan.net_commands(),
@@ -389,11 +389,11 @@ local function action(label, running)
     end
     error("Missing action: " .. label)
 end
-action("暂停全队", { phase = 3, hosting = 1, slot = 0, pause = 0 })
-action("恢复游戏", { phase = 3, hosting = 1, slot = 0, pause = 1, pauseOwner = 0 })
-action("保存并结束联机", { phase = 3, hosting = 1, slot = 0 })
-action("重连游戏", { phase = 3, hosting = 0, slot = 1 })
-action("离开游戏", { phase = 3, hosting = 0, slot = 1 })
+action("Pause for Everyone", { phase = 3, hosting = 1, slot = 0, pause = 0 })
+action("Resume Game", { phase = 3, hosting = 1, slot = 0, pause = 1, pauseOwner = 0 })
+action("Save and End Multiplayer", { phase = 3, hosting = 1, slot = 0 })
+action("Reconnect to Game", { phase = 3, hosting = 0, slot = 1 })
+action("Leave Game", { phase = 3, hosting = 0, slot = 1 })
 for i = 1, 3 do
     assert(sent[i][1] == "control" and sent[i][2] == tostring(i))
 end
@@ -401,7 +401,7 @@ assert(sent[4][1] == "reconnect" and sent[5][1] == "leave")
 for _, phase in ipairs({ 1, 7, 9, 3, 4 }) do
     local recovering = { phase = phase, hosting = 0, slot = 1, recovering = true }
     local rows, notice = actions.rows(ui, recovering, {}, {}, deps)
-    assert(#rows == 2 and rows[1].label == "重连游戏" and rows[2].label == "离开游戏")
+    assert(#rows == 2 and rows[1].label == "Reconnect to Game" and rows[2].label == "Leave Game")
     assert(rows[1].enabled == (phase == 4) and rows[2].enabled)
     assert(notice == (phase == 4 and "reconnect_failed" or "reconnecting"))
 end
@@ -410,9 +410,9 @@ for _, phase in ipairs({ 1, 7, 9, 4 }) do
     status.phase = phase
     labels = {}
     assert(_IsaacLanMenuRender(false, false, 0, "", -1000, -1000, false, "", ""))
-    assert(labels[phase == 4 and "重连失败，请重试" or "正在重连…"])
-    assert(labels["重连游戏"] and labels["离开游戏"] and not labels["暂停全队"])
-    assert(not labels["方向选择 · 确认进入 · 返回退出"])
+    assert(labels[phase == 4 and "Reconnection failed. Please try again." or "Reconnecting…"])
+    assert(labels["Reconnect to Game"] and labels["Leave Game"] and not labels["Pause for Everyone"])
+    assert(not labels["Navigate · Confirm to select · Back to exit"])
 end
 status.hosting, status.recovering, status.prepared, status.phase = 0, false, true, 3
 assert(
@@ -439,26 +439,26 @@ for _, phase in ipairs({ 9, 7, 3, 9 }) do
     for n = 2, 4 do
         status.players = n
         draw()
-        assert(labels["抹大拉"] and labels["里·该隐"] and not labels["以撒"])
+        assert(labels["Magdalene"] and labels["Tainted Cain"] and not labels["Isaac"])
         for slot = 1, n do
             local entry = catalog[tostring(roster[slot])]
             local expected = entry.animation == "missing" and "00_Random" or entry.animation
             assert(renderedPortraits[slot][2] == expected, "Run card used a lobby portrait")
         end
         assert(n < 3 or labels[longName])
-        assert(n < 4 or labels["无菜单画像"])
+        assert(n < 4 or labels["No Menu Portrait"])
     end
 end
 -- A new lobby returns to its own selections rather than retaining the run.
 status.phase, status.prepared = 10, false
 _IsaacLanMenuOpen(true)
 draw()
-assert(labels["等待队友结算结束"] and labels["离开房间"])
-assert(not labels["开始游戏"] and not labels["队友可以继续游戏"])
+assert(labels["Waiting for teammates to finish"] and labels["Leave Room"])
+assert(not labels["Start Game"] and not labels["Teammates can keep playing"])
 status.phase, status.players = 2, 2
 draw()
-assert(labels["以撒"] and not labels["里·该隐"])
-assert(labels["准备"] and labels["开始游戏"] and not labels["等待队友结算结束"])
+assert(labels["Isaac"] and not labels["Tainted Cain"])
+assert(labels["Ready"] and labels["Start Game"] and not labels["Waiting for teammates to finish"])
 assert(renderedPortraits[1][2] == "01_Isaac" and renderedPortraits[2][2] == "01_Isaac")
 -- Native MainMenu can remain behind the returning LAN page. Two Back presses
 -- close the LAN/mode overlay without invoking a lobby action.
@@ -470,16 +470,16 @@ assert(not draw(27))
 assert(#commands == count)
 print("PASS challenge selection, role cards, reconnect roster, clean HUD and transient exit")
 
-status.pendingSave, status.saveError = 1, "联机存档保存失败，请重试保存"
+status.pendingSave, status.saveError = 1, "Failed to save multiplayer progress. Please try again."
 _IsaacLanMenuOpen(true)
 draw()
-assert(labels["重试保存联机存档"] and labels[status.saveError])
-assert(not labels["创建房间"] and not labels["加入房间"])
+assert(labels["Retry saving multiplayer progress"] and labels[status.saveError])
+assert(not labels["Create Room"] and not labels["Join Room"])
 draw(13)
 assert(commands[#commands][1] == "retry_save", "Pending snapshot offered no retry action")
 status.pendingSave, status.saveError = 0, ""
 draw()
-assert(labels["创建房间"] and not labels["重试保存联机存档"])
+assert(labels["Create Room"] and not labels["Retry saving multiplayer progress"])
 
 -- Compatibility failures retain full versions, including a long prerelease,
 -- without UTF-8 truncation or colliding with the existing menu controls.
@@ -487,27 +487,27 @@ status.phase, status.hosting, status.players = 4, 0, 1
 _IsaacLanMenuOpen(true)
 local localVersion = "0.6.0-rc." .. string.rep("1", 23)
 for reason, title in pairs({
-    version = "无法加入：Isaac LAN 版本不一致",
-    fingerprint = "无法加入：版本号相同，但构建不一致",
-    protocol = "无法加入：联机协议不一致",
-    unavailable = "无法加入：未能核对房主版本",
+    version = "Unable to join: Isaac LAN versions do not match",
+    fingerprint = "Unable to join: Version numbers match, but builds differ",
+    protocol = "Unable to join: Multiplayer protocols do not match",
+    unavailable = "Unable to join: Could not verify the host's version",
 }) do
     local remote = reason == "unavailable" and ""
         or (reason == "version" and "0.7.0-rc." .. string.rep("2", 23) or localVersion)
     status.compatibilityError =
         { reason = reason, localVersion = localVersion, remoteVersion = remote }
     draw()
-    local versions = "房主："
-        .. (remote == "" and "未知" or remote)
-        .. "　你的版本："
+    local versions = "Host: "
+        .. (remote == "" and "Unknown" or remote)
+        .. "   Your version: "
         .. localVersion
     assert(
         labels[title]
             and labels[versions]
-            and labels["请确认双方使用相同版本和构建的 Isaac LAN。"]
+            and labels["Make sure both players are using the same Isaac LAN version and build."]
     )
-    assert(labels["加入房间"] and not labels["P1"] and not labels["准备"])
-    assert(utf8.len(versions) and labelPositions[title].y > labelPositions["返回"].y)
+    assert(labels["Join Room"] and not labels["P1"] and not labels["Ready"])
+    assert(utf8.len(versions) and labelPositions[title].y > labelPositions["Back"].y)
     assert(
         labelPositions[versions].y > labelPositions[title].y and labelPositions[versions].y < 260
     )
@@ -519,7 +519,7 @@ end
 status.phase, status.compatibilityError = 1, nil
 draw()
 assert(
-    not labels["无法加入：未能核对房主版本"],
+    not labels["Unable to join: Could not verify the host's version"],
     "Retry retained the previous mismatch"
 )
 status.phase, status.hosting, status.players = 0, 1, 2
@@ -545,7 +545,7 @@ for _, host in ipairs({ 0, 1 }) do
             ready0 = 0,
         },
         { 0, 1, 23 },
-        { ["1002"] = { id = 1002, name = "运气游戏", character = 65535, difficulty = 0 } },
+        { ["1002"] = { id = 1002, name = "Luck Game", character = 65535, difficulty = 0 } },
         {
             character = tostring,
             command = function(action, value)
@@ -567,7 +567,7 @@ remembered = { "room.example.com", 31234 }
 dofile(root .. "/src/bridge/presentation/menu.lua")
 _IsaacLanMenuOpen(true)
 draw()
-assert(labels["room.example.com"] and labels["端口：31234"])
+assert(labels["room.example.com"] and labels["Port: 31234"])
 draw(40) -- Address.
 draw(13)
 _IsaacLanMenuRender(true, true, 13, "192.168.1.42", -100, -100, false, "", "")
@@ -582,7 +582,7 @@ assert(remembered[2] == 32123)
 dofile(root .. "/src/bridge/presentation/menu.lua")
 _IsaacLanMenuOpen(true)
 draw()
-assert(labels["192.168.1.42"] and labels["端口：32123"])
+assert(labels["192.168.1.42"] and labels["Port: 32123"])
 for _, port in ipairs({ "", "0", "65536", "123.5" }) do
     local prefs = { page = "lan", ip = "room.example.com", port = port }
     local count = savedCount
@@ -629,25 +629,25 @@ _IsaacLanMenuOpen(true)
 draw()
 assert(#renderedMarks == 2 and renderedMarks[1][1] == 0 and renderedMarks[2][1] == 2)
 assert(
-    labels["房间规则：无"] and not labels["[ ] 队友伤害"] and labels["载入上次规则"]
+    labels["Room rules: None"] and not labels["[ ] Friendly Fire"] and labels["Load Previous Rules"]
 )
 for _ = 1, 4 do
     draw(40)
 end
 draw(13)
 draw()
-assert(labels["房间规则"] and labels["已启用 0 项"] and labels["[ ] 队友伤害"])
+assert(labels["Room Rules"] and labels["Enabled: 0 rules"] and labels["[ ] Friendly Fire"])
 assert(status.roomOptions == 0, "Opening rules changed their state")
 draw(13)
 draw()
 assert(status.roomOptions == 1 and status.ready0 == 0 and status.ready1 == 0)
-assert(labels["[x] 队友伤害"] and labels["已启用 1 项"] and labels["返回"])
+assert(labels["[x] Friendly Fire"] and labels["Enabled: 1 rule"] and labels["Back"])
 draw(27)
 draw()
-assert(labels["房间规则：友伤"] and labels["继续上次联机"])
+assert(labels["Room rules: FF"] and labels["Resume Previous Session"])
 draw(13) -- Back restored the rules entry, rather than the character row.
 draw()
-assert(labels["房间规则"])
+assert(labels["Room Rules"])
 draw(27)
 status.hosting, status.slot = 0, 1
 _IsaacLanMenuOpen(true)
@@ -657,22 +657,22 @@ draw(40)
 local previousCommands = #commands
 draw(13)
 draw()
-assert(labels["已启用 1 项 · 只读"] and labels["[x] 队友伤害"])
+assert(labels["Enabled: 1 rule · Read-only"] and labels["[x] Friendly Fire"])
 draw(13)
 assert(#commands == previousCommands and status.roomOptions == 1, "guest edited room rules")
 status.roomOptions = 0 -- Host changes while the guest's list remains open.
 draw()
-assert(labels["已启用 0 项 · 只读"] and labels["[ ] 队友伤害"])
+assert(labels["Enabled: 0 rules · Read-only"] and labels["[ ] Friendly Fire"])
 draw(27)
 draw()
-assert(labels["房间规则：无"])
+assert(labels["Room rules: None"])
 draw(13)
 draw()
-assert(labels["已启用 0 项 · 只读"], "Guest Back did not restore the rules entry")
+assert(labels["Enabled: 0 rules · Read-only"], "Guest Back did not restore the rules entry")
 status.phase = phaseValues.waiting
 draw()
 assert(#renderedMarks == 0, "Loading a saved character displayed unrelated lobby-choice marks")
-assert(not labels["房间规则"], "Rules page survived a lobby lifecycle change")
+assert(not labels["Room Rules"], "Rules page survived a lobby lifecycle change")
 
 -- Future independent checkboxes retain other flags when toggled.
 local selected
@@ -701,13 +701,13 @@ for _, row in ipairs(rows) do
 end
 -- Overflow remains a six-row viewport with an independently positioned Back.
 for i = 1, 11 do
-    options[#options + 1] = { flag = 1 << i, name = "规则 " .. i, shortName = "规" .. i }
+    options[#options + 1] = { flag = 1 << i, name = "Rule " .. i, shortName = "R" .. i }
 end
 status.phase, status.hosting, status.slot, status.savedPlayers = 2, 1, 0, 0
 status.roomOptions = 1 | (1 << 2) | (1 << 10)
 _IsaacLanMenuOpen(true)
 draw()
-assert(labels["房间规则：友伤 +2"] and not labels["[x] 队友伤害"])
+assert(labels["Room rules: FF +2"] and not labels["[x] Friendly Fire"])
 for _ = 1, 4 do
     draw(40)
 end
@@ -721,29 +721,29 @@ local function visibleRules()
             assert(point.y >= 100 and point.y <= 185, "Rule escaped its viewport")
         end
     end
-    assert(count == 6 and labelPositions["返回"].y == 214)
+    assert(count == 6 and labelPositions["Back"].y == 214)
 end
 visibleRules()
-assert(labels["1–6 / 12"] and labels["[ ] 规则 5"] and not labels["[ ] 规则 6"])
+assert(labels["1–6 / 12"] and labels["[ ] Rule 5"] and not labels["[ ] Rule 6"])
 for _ = 1, 6 do
     draw(40)
 end
 draw()
 visibleRules()
-assert(labels["2–7 / 12"] and not labels["[x] 队友伤害"] and labels["[ ] 规则 6"])
+assert(labels["2–7 / 12"] and not labels["[x] Friendly Fire"] and labels["[ ] Rule 6"])
 local previousMask = status.roomOptions
 draw(13)
 draw()
-assert(status.roomOptions == (previousMask | (1 << 6)) and labels["已启用 4 项"])
+assert(status.roomOptions == (previousMask | (1 << 6)) and labels["Enabled: 4 rules"])
 for _ = 1, 6 do
     draw(40)
 end
 draw()
 visibleRules()
-assert(labels["7–12 / 12"] and labels["[ ] 规则 11"])
+assert(labels["7–12 / 12"] and labels["[ ] Rule 11"])
 draw(13) -- Back stays accessible after the final rule.
 draw()
-assert(labels["房间规则：友伤 +3"])
+assert(labels["Room rules: FF +3"])
 draw(13)
 draw()
 assert(labels["1–6 / 12"], "Reopening rules retained an unrelated scroll offset")
@@ -759,10 +759,10 @@ previousMask = status.roomOptions
 draw(0, true, 70, 117, true) -- Adjacent hitboxes must not toggle two rules.
 assert(#commands == previousCommands + 1 and status.roomOptions == (previousMask ~ 2))
 draw()
-assert(labels["[x] 规则 1"] and labels["[x] 队友伤害"])
+assert(labels["[x] Rule 1"] and labels["[x] Friendly Fire"])
 draw(0, true, 70, 217, true) -- Fixed Back also works with the mouse.
 draw()
-assert(labels["房间规则：友伤 +4"])
+assert(labels["Room rules: FF +4"])
 -- A challenge adds a guest status row; Back still selects the actual rules entry.
 status.hosting, status.slot, status.challenge = 0, 1, 1001
 _IsaacLanMenuOpen(true)
@@ -772,14 +772,14 @@ for _ = 1, 3 do
 end
 draw(13)
 draw()
-assert(labels["已启用 5 项 · 只读"])
+assert(labels["Enabled: 5 rules · Read-only"])
 previousCommands = #commands
 draw(0, true, 70, 117, true)
 assert(#commands == previousCommands, "Read-only mouse click sent a mutation")
 draw(27)
 draw(13)
 draw()
-assert(labels["已启用 5 项 · 只读"], "Challenge guest returned to the wrong row")
+assert(labels["Enabled: 5 rules · Read-only"], "Challenge guest returned to the wrong row")
 for i = #options, 2, -1 do
     options[i] = nil
 end
@@ -789,7 +789,7 @@ _IsaacLan.net_challenges = function()
     local definitions = ordinaryChallenges()
     definitions["1003"] = {
         id = 1003,
-        name = "吃鸡",
+        name = "Battle Royale",
         character = 0,
         difficulty = 0,
         roomOptionsLocked = true,
@@ -801,7 +801,7 @@ end
 status.challenge, status.roomOptions = 1003, 1
 status.hosting, status.slot = 1, 0
 draw()
-assert(labels["已启用 1 项 · 只读"])
+assert(labels["Enabled: 1 rule · Read-only"])
 previousCommands = #commands
 draw(13)
 draw(0, true, 70, 100, true)
@@ -811,11 +811,11 @@ for _, host in ipairs({ 0, 1 }) do
     status.hosting, status.slot = host, 1 - host
     _IsaacLanMenuOpen(true)
     draw()
-    local point = assert(labelPositions["房间规则：友伤"])
+    local point = assert(labelPositions["Room rules: FF"])
     draw(0, true, point.x + 5, point.y + 2, true)
     draw(13)
     draw()
-    assert(labels["房间规则：友伤"] and not labels["已启用 1 项 · 只读"])
+    assert(labels["Room rules: FF"] and not labels["Enabled: 1 rule · Read-only"])
     local ui = { page = "lan", difficulty = 0, seed = "" }
     local lockedRows = model.rows(ui, status, { 0 }, _IsaacLan.net_challenges(), {
         character = tostring,
@@ -825,7 +825,7 @@ for _, host in ipairs({ 0, 1 }) do
         end,
     })
     for _, row in ipairs(lockedRows) do
-        if row.label == "房间规则：友伤" then
+        if row.label == "Room rules: FF" then
             assert(not row.enabled)
             row.action()
             assert(ui.page == "lan", "Locked room rules opened their editor")
@@ -834,10 +834,10 @@ for _, host in ipairs({ 0, 1 }) do
 end
 status.challenge, status.hosting, status.slot = 0, 1, 0
 draw()
-local point = assert(labelPositions["房间规则：友伤"])
+local point = assert(labelPositions["Room rules: FF"])
 draw(0, true, point.x + 5, point.y + 2, true)
 draw()
-assert(labels["已启用 1 项"] and not labels["已启用 1 项 · 只读"])
+assert(labels["Enabled: 1 rule"] and not labels["Enabled: 1 rule · Read-only"])
 draw(13)
 assert(status.roomOptions == 0, "Leaving the locked challenge did not restore editing")
 print("PASS personal completion layers, host-only independent rules and resume selection")
