@@ -33,51 +33,51 @@ end
 local previousMouse = Vector(-1000, -1000)
 local characterChoices, characterCatalog = {}, {}
 local characterNames = {
-    [PlayerType.PLAYER_ISAAC] = "以撒",
-    [PlayerType.PLAYER_MAGDALENE] = "抹大拉",
-    [PlayerType.PLAYER_CAIN] = "该隐",
-    [PlayerType.PLAYER_JUDAS] = "犹大",
+    [PlayerType.PLAYER_ISAAC] = "Isaac",
+    [PlayerType.PLAYER_MAGDALENE] = "Magdalene",
+    [PlayerType.PLAYER_CAIN] = "Cain",
+    [PlayerType.PLAYER_JUDAS] = "Judas",
     [PlayerType.PLAYER_BLUEBABY] = "???",
-    [PlayerType.PLAYER_EVE] = "夏娃",
-    [PlayerType.PLAYER_SAMSON] = "参孙",
-    [PlayerType.PLAYER_AZAZEL] = "阿撒泻勒",
-    [PlayerType.PLAYER_LAZARUS] = "拉撒路",
-    [PlayerType.PLAYER_EDEN] = "伊甸",
-    [PlayerType.PLAYER_THELOST] = "游魂",
-    [PlayerType.PLAYER_LAZARUS2] = "拉撒路",
-    [PlayerType.PLAYER_BLACKJUDAS] = "犹大",
-    [PlayerType.PLAYER_LILITH] = "莉莉丝",
-    [PlayerType.PLAYER_KEEPER] = "店长",
-    [PlayerType.PLAYER_APOLLYON] = "亚玻伦",
-    [PlayerType.PLAYER_THEFORGOTTEN] = "遗骸",
-    [PlayerType.PLAYER_THESOUL] = "灵魂",
-    [PlayerType.PLAYER_BETHANY] = "伯大尼",
-    [PlayerType.PLAYER_JACOB] = "雅各与以扫",
-    [PlayerType.PLAYER_ESAU] = "以扫",
-    [PlayerType.PLAYER_ISAAC_B] = "里·以撒",
-    [PlayerType.PLAYER_MAGDALENE_B] = "里·抹大拉",
-    [PlayerType.PLAYER_CAIN_B] = "里·该隐",
-    [PlayerType.PLAYER_JUDAS_B] = "里·犹大",
-    [PlayerType.PLAYER_BLUEBABY_B] = "里·???",
-    [PlayerType.PLAYER_EVE_B] = "里·夏娃",
-    [PlayerType.PLAYER_SAMSON_B] = "里·参孙",
-    [PlayerType.PLAYER_AZAZEL_B] = "里·阿撒泻勒",
-    [PlayerType.PLAYER_LAZARUS_B] = "里·拉撒路",
-    [PlayerType.PLAYER_EDEN_B] = "里·伊甸",
-    [PlayerType.PLAYER_THELOST_B] = "里·游魂",
-    [PlayerType.PLAYER_LILITH_B] = "里·莉莉丝",
-    [PlayerType.PLAYER_KEEPER_B] = "里·店长",
-    [PlayerType.PLAYER_APOLLYON_B] = "里·亚玻伦",
-    [PlayerType.PLAYER_THEFORGOTTEN_B] = "里·遗骸",
-    [PlayerType.PLAYER_BETHANY_B] = "里·伯大尼",
-    [PlayerType.PLAYER_JACOB_B] = "里·雅各",
-    [PlayerType.PLAYER_LAZARUS2_B] = "里·拉撒路",
-    [PlayerType.PLAYER_JACOB2_B] = "里·雅各",
-    [PlayerType.PLAYER_THESOUL_B] = "里·灵魂",
+    [PlayerType.PLAYER_EVE] = "Eve",
+    [PlayerType.PLAYER_SAMSON] = "Samson",
+    [PlayerType.PLAYER_AZAZEL] = "Azazel",
+    [PlayerType.PLAYER_LAZARUS] = "Lazarus",
+    [PlayerType.PLAYER_EDEN] = "Eden",
+    [PlayerType.PLAYER_THELOST] = "The Lost",
+    [PlayerType.PLAYER_LAZARUS2] = "Lazarus",
+    [PlayerType.PLAYER_BLACKJUDAS] = "Judas",
+    [PlayerType.PLAYER_LILITH] = "Lilith",
+    [PlayerType.PLAYER_KEEPER] = "Keeper",
+    [PlayerType.PLAYER_APOLLYON] = "Apollyon",
+    [PlayerType.PLAYER_THEFORGOTTEN] = "The Forgotten",
+    [PlayerType.PLAYER_THESOUL] = "The Soul",
+    [PlayerType.PLAYER_BETHANY] = "Bethany",
+    [PlayerType.PLAYER_JACOB] = "Jacob & Esau",
+    [PlayerType.PLAYER_ESAU] = "Esau",
+    [PlayerType.PLAYER_ISAAC_B] = "Tainted Isaac",
+    [PlayerType.PLAYER_MAGDALENE_B] = "Tainted Magdalene",
+    [PlayerType.PLAYER_CAIN_B] = "Tainted Cain",
+    [PlayerType.PLAYER_JUDAS_B] = "Tainted Judas",
+    [PlayerType.PLAYER_BLUEBABY_B] = "Tainted ???",
+    [PlayerType.PLAYER_EVE_B] = "Tainted Eve",
+    [PlayerType.PLAYER_SAMSON_B] = "Tainted Samson",
+    [PlayerType.PLAYER_AZAZEL_B] = "Tainted Azazel",
+    [PlayerType.PLAYER_LAZARUS_B] = "Tainted Lazarus",
+    [PlayerType.PLAYER_EDEN_B] = "Tainted Eden",
+    [PlayerType.PLAYER_THELOST_B] = "Tainted The Lost",
+    [PlayerType.PLAYER_LILITH_B] = "Tainted Lilith",
+    [PlayerType.PLAYER_KEEPER_B] = "Tainted Keeper",
+    [PlayerType.PLAYER_APOLLYON_B] = "Tainted Apollyon",
+    [PlayerType.PLAYER_THEFORGOTTEN_B] = "Tainted The Forgotten",
+    [PlayerType.PLAYER_BETHANY_B] = "Tainted Bethany",
+    [PlayerType.PLAYER_JACOB_B] = "Tainted Jacob",
+    [PlayerType.PLAYER_LAZARUS2_B] = "Tainted Lazarus",
+    [PlayerType.PLAYER_JACOB2_B] = "Tainted Jacob",
+    [PlayerType.PLAYER_THESOUL_B] = "Tainted The Soul",
 }
 local function character(id)
     local entry = characterCatalog[tostring(id)]
-    return characterNames[id] or (entry and entry.name) or ("角色 " .. id)
+    return characterNames[id] or (entry and entry.name) or ("Character " .. id)
 end
 local function portrait(id)
     local entry = characterCatalog[tostring(id)]
@@ -234,11 +234,11 @@ function _IsaacLanMenuRender(
         renderRestart(status, assets[10])
         local banner
         if phase == Phase.waiting then
-            banner = "正在当前层归队 · 队友继续游戏"
+            banner = "Rejoining on the current floor · Teammates can keep playing"
         elseif status.prepared and (status.pause or 0) > 0 then
             banner = "P"
                 .. ((status.pauseOwner or 0) + 1)
-                .. " 暂停了游戏，由发起者恢复"
+                .. " paused the game. The player who paused it can resume."
         end
         if banner then
             assets.lobby.Scale = Vector(1, 0.4)
@@ -286,20 +286,20 @@ function _IsaacLanMenuRender(
     })
     local rulesPage = ruleCount ~= nil
     centered(
-        modes and "联机模式"
-            or rulesPage and "房间规则"
-            or ui.page == "challenges" and "联机挑战"
-            or "局域网联机",
+        modes and "Multiplayer Mode"
+            or rulesPage and "Room Rules"
+            or ui.page == "challenges" and "Multiplayer Challenges"
+            or "LAN Multiplayer",
         110 + shift,
         58,
         16
     )
     if rulesPage then
         centered(
-            "已启用 "
+            "Enabled: "
                 .. ruleCount
-                .. " 项"
-                .. (host and not (challenge and challenge.roomOptionsLocked) and "" or " · 只读"),
+                .. " rules"
+                .. (host and not (challenge and challenge.roomOptionsLocked) and "" or " · Read-only"),
             110,
             82,
             10,
@@ -308,23 +308,23 @@ function _IsaacLanMenuRender(
     end
     if notice == "reconnecting" or notice == "reconnect_failed" then
         centered(
-            notice == "reconnecting" and "正在重连…" or "重连失败，请重试",
+            notice == "reconnecting" and "Reconnecting…" or "Reconnection failed. Please try again.",
             110,
             100,
             12
         )
     elseif notice == "unavailable" then
-        centered("全员需解锁底片与里该隐", 240, 250, 10, red)
+        centered("All players must unlock The Negative and Tainted Cain", 240, 250, 10, red)
     elseif notice == "returning" then
-        centered("等待队友结算结束", 110, 100, 12)
+        centered("Waiting for teammates to finish", 110, 100, 12)
     elseif notice == "waiting" then
         centered(
-            phase == Phase.waiting and "正在当前层归队" or "正在连接或加载…",
+            phase == Phase.waiting and "Rejoining on the current floor" or "Connecting or loading…",
             110,
             100,
             12
         )
-        centered("队友可以继续游戏", 110, 124, 10)
+        centered("Teammates can keep playing", 110, 124, 10)
     end
     local yStart = (
         status.recovering
@@ -381,7 +381,7 @@ function _IsaacLanMenuRender(
             label = (item.checked and "[x] " or "[ ] ") .. label
         end
         if item.field and ui.editing == item.field then
-            label = (item.field == "port" and "端口：" or "") .. ui[item.field] .. "_"
+            label = (item.field == "port" and "Port: " or "") .. ui[item.field] .. "_"
         end
         local size = assets[12]:GetStringWidthUTF8(label) > 138 and 10 or 12
         text(label, 49 + shift, y, size, item.color or (item.enabled and ink or faded), 138)
@@ -446,18 +446,18 @@ function _IsaacLanMenuRender(
             end
             if phase == Phase.lobby and status["ready" .. i] == 1 then
                 layer(assets.cards, 5, x, y)
-                centered("已准备", x + 63, y + 78, 10, ink)
+                centered("Ready", x + 63, y + 78, 10, ink)
             else
                 centered(
-                    phase == Phase.lobby and "选择中"
-                        or ((status.connected or 0) & (1 << i) ~= 0 and "在线" or "等待归队"),
+                    phase == Phase.lobby and "Selecting"
+                        or ((status.connected or 0) & (1 << i) ~= 0 and "Online" or "Waiting to rejoin"),
                     x + 63,
                     y + 78,
                     10
                 )
             end
         else
-            centered("等待玩家", x + 63, y + 52, 10, faded)
+            centered("Waiting for players", x + 63, y + 52, 10, faded)
         end
     end
     local message = status.saveError and status.saveError ~= "" and status.saveError
@@ -474,39 +474,39 @@ function _IsaacLanMenuRender(
             end
         end
         if #missing > 0 then
-            message = table.concat(missing, "、") .. " 需解锁底片与里该隐"
+            message = table.concat(missing, " / ") .. " must unlock The Negative and Tainted Cain"
         end
     end
     if message == "" and status.modMismatch == 1 then
-        message = "Mod 不一致或无法核对，可能会造成未知的影响"
+        message = "Mods differ or could not be verified. This may cause unexpected issues."
         messageColor = amber
     end
     local footerY = compatibilityLines and 206 or (message ~= "" and 235 or 243)
     if rulesPage then
         text(
-            host and "方向选择 · 确认勾选 · 返回退出"
-                or "方向查看 · 返回退出",
+            host and "Navigate · Confirm to toggle · Back to exit"
+                or "Navigate · Back to exit",
             25,
             footerY,
             10
         )
     elseif phase == Phase.lobby and ui.page ~= "challenges" then
         if not host then
-            text("房主地址：" .. ui.ip, 25, footerY - 12, 10)
+            text("Host address: " .. ui.ip, 25, footerY - 12, 10)
         end
         text(
-            status.transport:upper() .. " 端口：" .. (host and status.port or ui.port),
+            status.transport:upper() .. " Port: " .. (host and status.port or ui.port),
             25,
             footerY,
             10
         )
     elseif phase == Phase.running then
-        text("共同楼层 · 分头探索", 25, footerY, 10)
+        text("Shared floor · Explore separately", 25, footerY, 10)
     else
         text(
-            ui.editing and "输入后确认 · 支持粘贴"
-                or status.recovering and "方向选择 · 确认进入"
-                or "方向选择 · 确认进入 · 返回退出",
+            ui.editing and "Type and confirm · Paste supported"
+                or status.recovering and "Navigate · Confirm to select"
+                or "Navigate · Confirm to select · Back to exit",
             25,
             footerY,
             10
