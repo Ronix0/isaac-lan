@@ -5,25 +5,25 @@ return function(native, player)
         if continued then
             local heads = restoredOrder and native.rooms_heads(1) or native.rooms_heads()
             for slot = 0, status.players - 1 do
-                local index = assert(heads[tostring(slot)], "联机角色缺失")
-                assert(native.input_assign(index, slot + 1), "无法绑定联机角色")
+                local index = assert(heads[tostring(slot)], "Missing multiplayer character")
+                assert(native.input_assign(index, slot + 1), "Failed to assign multiplayer character")
             end
         else
-            assert(native.input_assign(0, 1), "无法绑定主机角色")
+            assert(native.input_assign(0, 1), "Failed to assign host character")
             for slot = 1, status.players - 1 do
                 assert(
                     native.players_spawn(status["character" .. slot], slot + 1),
-                    "无法创建客机角色"
+                    "Failed to create guest character"
                 )
             end
         end
         local heads, seen = native.rooms_heads(), {}
         for slot = 0, status.players - 1 do
-            local index = assert(heads[tostring(slot)], "联机角色缺失")
-            assert(not seen[index], "联机角色重复")
+            local index = assert(heads[tostring(slot)], "Missing multiplayer character")
+            assert(not seen[index], "Duplicate multiplayer character")
             seen[index] = true
             local p = assert(player(index))
-            assert(p.ControllerIndex == slot + 1, "联机角色控制器归属不一致")
+            assert(p.ControllerIndex == slot + 1, "Multiplayer character controller ownership mismatch")
         end
     end
 end
