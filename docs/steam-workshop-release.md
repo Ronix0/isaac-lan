@@ -1,24 +1,24 @@
-# Steam 创意工坊更新
+# Steam Workshop Updates
 
-更新现有 [Isaac LAN / 局域网联机](https://steamcommunity.com/sharedfiles/filedetails/?id=3817760679) 条目，使用 GitHub Release 的正式安装包和已确认文案。App ID 为 `250900`，条目 ID 为 `3817760679`；不为新版本创建新条目。
+Update the existing [Isaac LAN / LAN Multiplayer](https://steamcommunity.com/sharedfiles/filedetails/?id=3817760679) item using the official GitHub Release package and approved copy. App ID: `250900`. Item ID: `3817760679`. Do not create a new item for a new version.
 
-工具默认只更新内容和版本更新说明，保留标题、各语言介绍、封面、标签与可见性。显式传入 `--prepend-notes` 时，在默认语言和简体中文介绍前放置版本标题与已确认更新说明，以 `-----` 分隔原介绍；`--replace-notes-version` 将介绍顶部指定版本的说明替换为本次文案。`--preview` 指定本次封面，同时更新内容中的 `preview.png`。原介绍中的群号、反馈入口等保留。
+By default, the tool updates only the content and version update notes, preserving the title, descriptions in all languages, cover image, tags, and visibility. With `--prepend-notes`, it places the version heading and approved update notes before the default-language and Simplified Chinese descriptions, separated from the original description by `-----`. `--replace-notes-version` replaces the notes for the specified version at the top of the description. `--preview` specifies the cover for this update and also updates `preview.png` in the content. Existing group numbers, feedback links, and similar information in the descriptions are preserved.
 
-## 准备环境
+## Prepare the Environment
 
-- Windows Steam 已登录条目所有者账号，并已安装以撒；无需启动游戏，也无需再次执行游戏验收。
-- GitHub Release 已发布，当前检出的发布说明对应目标标签。文案按 [AGENTS.md](https://github.com/BMingSY/isaac-lan/blob/main/AGENTS.md#发布文案约定) 审阅；已有授权且措辞不变时直接复用。
-- Python 环境已安装 [工具依赖](https://github.com/BMingSY/isaac-lan/blob/main/tools/requirements-ci.txt)，`gh` 已登录；Windows x86 构建环境按[开发与测试](https://github.com/BMingSY/isaac-lan/blob/main/docs/development-and-testing.md) 配置。
+- Steam is signed in on Windows with the account that owns the item, and Isaac is installed. The game does not need to be launched, and game acceptance testing does not need to be repeated.
+- The GitHub Release is published, and the checked-out release notes match the target tag. Copy is reviewed according to [AGENTS.md](https://github.com/BMingSY/isaac-lan/blob/main/AGENTS.md#release-copy-conventions); reuse previously approved, unchanged wording.
+- The Python environment has the [tool dependencies](https://github.com/BMingSY/isaac-lan/blob/main/tools/requirements-ci.txt), `gh` is authenticated, and the Windows x86 build environment is configured as described in [Development and Testing](https://github.com/BMingSY/isaac-lan/blob/main/docs/development-and-testing.md).
 
-构建发布工具，它不包含在玩家安装包中：
+Build the release helper. It is not included in the player installation package:
 
 ```sh
 cmake --build build-win32 --target isaac_lan_workshop
 ```
 
-以下命令在 WSL Bash 中执行。先设置三个变量：`ISAAC_GAME_DIR` 为游戏目录，`WORKSHOP_ASSETS` 为本次下载目录，`WORKSHOP_OUTPUT` 为本次准备目录。均使用 WSL 路径；准备目录应位于 Windows 磁盘，且尚不存在。工具也支持 Windows Python，此时传入 Windows 路径。
+Run the following commands in WSL Bash. Set three variables first: `ISAAC_GAME_DIR` to the game directory, `WORKSHOP_ASSETS` to the current download directory, and `WORKSHOP_OUTPUT` to the preparation directory. Use WSL paths. The preparation directory must be on a Windows drive and must not already exist. The tool also supports Windows Python, in which case use Windows paths.
 
-## 准备安装包与文案
+## Prepare the Package and Copy
 
 ```sh
 tag="v$(cat VERSION)"
@@ -32,19 +32,19 @@ python tools/workshop_release.py prepare \
   --tag "$tag" --output "$WORKSHOP_OUTPUT"
 ```
 
-`prepare` 不发布。它校验安装包，查询现有条目并下载当前内容，保留原有 Lua 入口、预览图和安装说明，更新 `metadata.xml` 的版本号，只放入本次 ZIP 和校验文件。更新说明只转换标题格式为 Steam BBCode，不改变措辞。
+`prepare` does not publish. It validates the package, queries the existing item, downloads its current content, preserves the original Lua entry point, preview image, and installation instructions, updates the version in `metadata.xml`, and includes only the current ZIP and checksum file. Update notes are converted to Steam BBCode heading format without changing their wording.
 
-需要将更新说明放到介绍最前面并更换封面时，在 `prepare` 命令中追加 `--prepend-notes --preview docs/assets/steam-workshop-cover.png`；只有用户明确要求时使用。准备结果额外包含各语言的完整介绍和封面哈希，发布前核对其与已确认文案、原介绍和指定图片一致。该操作在现有介绍前添加一次内容，不自动删除历史版本段落。
+To place the update notes at the beginning of the description and change the cover, append `--prepend-notes --preview docs/assets/steam-workshop-cover.png` to the `prepare` command. Use this only when explicitly requested by the user. The preparation result also includes the full descriptions in each language and the cover hash. Before publishing, verify that they match the approved copy, original descriptions, and specified image. This operation adds one new section before the existing description; it does not automatically remove historical version sections.
 
-需要替换顶部旧版本说明时，使用 `--replace-notes-version v0.5.0`，版本号必须与现有段落一致，不能同时传入 `--prepend-notes`。工具检查默认语言和简体中文介绍均以该版本标题开头，并具有 `-----` 分隔的项目介绍；只替换分隔线前的版本说明。任一语言的版本或结构不匹配时停止准备，不发布部分修改。
+To replace an older version's notes at the top, use `--replace-notes-version v0.5.0`. The version must match the existing section, and this option cannot be used together with `--prepend-notes`. The tool checks that both the default-language and Simplified Chinese descriptions start with that version heading and contain the `-----` separator before the item description. Only the notes before the separator are replaced. If either language has a different version or structure, preparation stops; it does not publish a partial change.
 
-Steam 页面封面须小于 1 MB。原图超过限制时，制作同一图片的压缩副本，用 `--preview-upload` 指定；`--preview` 仍指定原图，保留在下载内容中。发布工具分别校验上传副本与内容原图。
+The Steam page cover must be smaller than 1 MB. If the original image exceeds this limit, create a compressed copy and pass it with `--preview-upload`. Keep the original image in `--preview` so it remains in the downloaded content. The release tool validates the uploaded copy and the content image separately.
 
-检查输出中的 `reviewed-notes.md`、`steam-change-notes.txt` 和 `preparation.json`。文案只写玩家能感知的变化；没有新特性就不保留该分类，不列排查原因、内部同步机制或逐项调试细节。
+Review `reviewed-notes.md`, `steam-change-notes.txt`, and `preparation.json` in the output. Copy should describe only player-visible changes. Omit a category when there are no new features; do not list debugging causes, internal synchronization mechanisms, or step-by-step troubleshooting.
 
-## 发布并核对
+## Publish and Verify
 
-获得本次发布授权、确认文案后执行：
+After receiving authorization for this publication and approval of the copy, run:
 
 ```sh
 python tools/workshop_release.py publish \
@@ -52,15 +52,15 @@ python tools/workshop_release.py publish \
   --output "$WORKSHOP_OUTPUT"
 ```
 
-发布前再次核对本地文件和文案哈希，以及远端条目是否变化。上传成功须取得 Steam 成功回执且无待接受协议；随后自动下载条目，逐文件校验内容，并核对默认语言和简体中文的标题、介绍及可见性。旧安装包不能残留。
+Before publishing, recheck local file and copy hashes and whether the remote item has changed. A successful upload requires a Steam success receipt and no pending agreement acceptance. The tool then downloads the item, verifies every file, and checks the default-language and Simplified Chinese titles, descriptions, and visibility. An old installation package must not remain.
 
-介绍按语言分别提交：第一次同时提交内容、更新记录与可选封面，后续语言只提交介绍，不重复更新记录。每个语言保留独立回执；任一提交失败或未返回成功时，整次发布不能计为完成。指定封面时，从 Steam 返回的预览地址下载并核对图片哈希。
+Descriptions are submitted separately by language. The first submission includes content, update notes, and the optional cover; later language submissions update only the description and do not resubmit update notes. Each language has its own receipt. If any submission fails or does not return success, the entire publication is not considered complete. When a cover is specified, the tool downloads the preview image from Steam's returned address and verifies its hash.
 
-保留整个输出目录中的准备清单、上传回执和 `verify-*/verification.json`。最后查看创意工坊页面与更新记录，确认标题仍为 **Isaac LAN / 局域网联机**、说明采用已确认文案。仅有“已提交”日志不能视为发布完成。
+Keep the full output directory, including the preparation manifest, upload receipts, and `verify-*/verification.json`. Finally, inspect the Workshop page and update notes to confirm that the existing title is preserved and the description uses the approved copy. A log that only says "submitted" is not proof of a completed publication.
 
-## 中断或失败
+## Interrupted or Failed Updates
 
-仅重新核对已发布内容，不再上传：
+To verify the published content without uploading again:
 
 ```sh
 python tools/workshop_release.py verify \
@@ -68,9 +68,9 @@ python tools/workshop_release.py verify \
   --output "$WORKSHOP_OUTPUT"
 ```
 
-- 上传超时或进程退出后，保留 `upload-started.json`，先执行 `verify` 并查看远端更新记录；不得直接重发。确认未成功提交后，再用新目录准备并重试。
-- 多语言部分完成时，保留各语言成功回执，核对远端已完成与未完成的字段；不得重新上传已完成的内容或再次追加同一版介绍。
-- Steam 要求接受协议时，由账号所有者处理；包、文案或远端条目发生变化时，重新准备，文案发生变化须重新审阅。
-- 网页限流时可用 Steam API 和下载哈希核对内容，但需区分这些结果与网页更新记录的核对。简体中文标题为空可能只是没有单独设置该语言标题，按发布前快照保留，不自动改名。
+- After an upload timeout or process exit, preserve `upload-started.json`, run `verify`, and inspect the remote update record first. Do not immediately submit again. If the upload is confirmed unsuccessful, prepare and retry in a new directory.
+- If only some languages completed, preserve their success receipts and compare completed and pending remote fields. Do not re-upload completed content or prepend the same version section again.
+- If Steam requires agreement acceptance, the account owner must handle it. If the package, copy, or remote item changes, prepare again; changed wording requires a new review.
+- When the Steam webpage is rate-limited, Steam API and download hashes can verify content, but distinguish those results from verification of the web update record. An empty Simplified Chinese title may simply mean no separate title was set for that language; preserve the pre-publication snapshot and do not rename it automatically.
 
-实现入口：[Python 发布工具](https://github.com/BMingSY/isaac-lan/blob/main/tools/workshop_release.py)、[Steam API 工具](https://github.com/BMingSY/isaac-lan/blob/main/tools/workshop.cpp)。接口依据 [Steamworks UGC 文档](https://partner.steamgames.com/doc/api/ISteamUGC)：提交后等待结果回调，下载完成后再读取安装目录。开发回归使用模拟 Steam 接口；检查工具时可以查询／下载现有条目，不应为测试重复发布。
+Implementation entry points: [Python release tool](https://github.com/BMingSY/isaac-lan/blob/main/tools/workshop_release.py) and [Steam API tool](https://github.com/BMingSY/isaac-lan/blob/main/tools/workshop.cpp). The interface follows the [Steamworks UGC documentation](https://partner.steamgames.com/doc/api/ISteamUGC): wait for the submission result callback, then read the installation directory after download completion. Development regression uses a simulated Steam interface. The tool may query/download the existing item during validation, but tests must not publish repeated updates.
