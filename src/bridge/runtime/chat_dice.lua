@@ -2,16 +2,16 @@
 local dice = {}
 local maxCount, maxTerms, maxConstant, maxExtra = 20, 20, 9999, 2
 local percentileSides, digitSides = 100, 10
-local modifierNames = { b = "奖励", p = "惩罚" }
+local modifierNames = { b = "bonus", p = "penalty" }
 
 function dice.help(maxSides)
     return {
-        "/MdN：全队掷骰，M 默认 1；每次最多 "
+        "/MdN: Roll dice for the whole party. M defaults to 1; up to "
             .. maxCount
-            .. " 颗，N 为 1～"
+            .. " dice per roll; N ranges from 1 to "
             .. maxSides,
-        "骰子可加减组合，例如 /d6+2d3+1",
-        "/d100b /d100p：奖励／惩罚骰；后接 1～" .. maxExtra .. " 指定数量",
+        "Dice can be combined with addition and subtraction, e.g. /d6+2d3+1",
+        "/d100b /d100p: Bonus/penalty rolls; append a quantity from 1 to " .. maxExtra .. "  to set the quantity",
     }
 end
 
@@ -21,7 +21,7 @@ function dice.parse(text, maxSides)
     while true do
         local token, ending = rest:match("^%s*([^%s+%-]+)()")
         if not token then
-            return nil, "用法：/MdN，例如 /2d6 或 /d6+2d3"
+            return nil, "Usage: /MdN, e.g. /2d6 or /d6+2d3"
         end
         local amount, sides, modifier, extra = token:match("^(%d*)d(%d+)([bp]?)(%d*)$")
         local term = { sign = sign }
@@ -30,21 +30,21 @@ function dice.parse(text, maxSides)
             amount = amount == "" and 1 or tonumber(amount)
             sides = tonumber(sides)
             if not amount or amount < 1 or amount > maxCount then
-                return nil, "骰子数量 M 为 1～" .. maxCount .. " 的整数"
+                return nil, "The number of dice M must be an integer from 1 to " .. maxCount .. ""
             end
             if not sides or sides < 1 or sides > maxSides then
-                return nil, "骰子面数 N 为 1～" .. maxSides .. " 的整数"
+                return nil, "The number of sides N must be an integer from 1 to " .. maxSides .. ""
             end
             count = count + amount
             if count > maxCount then
-                return nil, "每次最多投掷 " .. maxCount .. " 颗骰子"
+                return nil, "You can roll at most " .. maxCount .. " dice per roll"
             end
             term.count, term.sides = amount, sides
             label = (amount == 1 and "" or tostring(amount)) .. "D" .. sides
             if modifier ~= "" then
                 extra = extra == "" and 1 or tonumber(extra)
                 if sides ~= percentileSides or not extra or extra < 1 or extra > maxExtra then
-                    return nil, "奖惩骰仅用于 D100，b／p 后的数量为 1～" .. maxExtra
+                    return nil, "Bonus/penalty rolls are only available for D100. The quantity after b/p must be from 1 to " .. maxExtra
                 end
                 term.modifier, term.extra = modifier, extra
                 label = label .. modifier .. (extra == 1 and "" or tostring(extra))
@@ -52,14 +52,14 @@ function dice.parse(text, maxSides)
         elseif #terms > 0 and token:match("^%d+$") then
             term.constant = tonumber(token)
             if not term.constant or term.constant > maxConstant then
-                return nil, "加减常数为 0～" .. maxConstant .. " 的整数"
+                return nil, "The addition/subtraction constant must be an integer from 0 to " .. maxConstant .. ""
             end
             label = tostring(term.constant)
         else
-            return nil, "用法：/MdN，例如 /2d6 或 /d6+2d3"
+            return nil, "Usage: /MdN, e.g. /2d6 or /d6+2d3"
         end
         if #terms >= maxTerms then
-            return nil, "掷骰表达式最多 " .. maxTerms .. " 项"
+            return nil, "A dice expression can contain at most " .. maxTerms .. " terms"
         end
         terms[#terms + 1] = term
         labels[#labels + 1] = (#labels == 0 and "" or (sign == 1 and " + " or " - ")) .. label
@@ -69,7 +69,7 @@ function dice.parse(text, maxSides)
         end
         local operator = rest:sub(1, 1)
         if operator ~= "+" and operator ~= "-" then
-            return nil, "用法：/MdN，例如 /2d6 或 /d6+2d3"
+            return nil, "Usage: /MdN, e.g. /2d6 or /d6+2d3"
         end
         sign, rest = operator == "+" and 1 or -1, rest:sub(2)
     end
