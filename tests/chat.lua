@@ -357,7 +357,7 @@ beforeHost = #host.messages
 assert(guest.submit("Visible in this room --room"))
 poll()
 assert(#host.messages == beforeHost and next(host.bubbles) == nil)
-assert(guest.bubbles[1].text == "[Room] 同房可见")
+assert(guest.bubbles[1].text == "[Room] Visible in this room")
 assert(other.bubbles[1].text == guest.bubbles[1].text)
 assert(guest.submit("/2d6 --room"))
 local roomReplay = packets[#packets][2]
@@ -374,7 +374,7 @@ beforeOther = #other.messages
 assert(guest.submit("Only this room --room"))
 poll()
 assert(#host.messages == beforeHost and #other.messages == beforeOther)
-assert(guest.bubbles[1].text == "[Room] 只有本房间")
+assert(guest.bubbles[1].text == "[Room] Only this room")
 assert(guest.submit("Default party message"))
 poll()
 assert(host.bubbles[1].text == "Default party message" and other.bubbles[1].text == "Default party message")
