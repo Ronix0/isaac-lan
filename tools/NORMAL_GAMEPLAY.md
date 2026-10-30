@@ -1,111 +1,78 @@
-# 正常操作双客户端回归
+# Normal-Input Two-Client Regression
 
-在 WSL 中运行，使用已由 [prepare_lab.py](https://github.com/BMingSY/isaac-lan/blob/main/tools/prepare_lab.py) 创建、符合工具默认配置的两个独立副本。两边必须带 `.isaac-lan-lab` 标记；已有游戏进程时拒绝重新使用这些副本。示例中的 `ISAAC_RUN_OUTPUT` 与 `ISAAC_FFMPEG` 分别指定当轮输出和录像工具。
+Run this in WSL using the two independent game copies created by [prepare_lab.py](https://github.com/BMingSY/isaac-lan/blob/main/tools/prepare_lab.py) with the tool's default configuration. Both copies must have the `.isaac-lan-lab` marker. If a game process is already running, the script refuses to reuse these copies. In the examples, `ISAAC_RUN_OUTPUT` and `ISAAC_FFMPEG` specify the output directory for this run and the recording tool.
 
-```sh
-python3 tools/manual_gameplay.py run \
-  --output "$ISAAC_RUN_OUTPUT" \
-  --ffmpeg "$ISAAC_FFMPEG"
+Adding `--latency-ms 75` introduces 75 ms of delay in each UDP direction within the same workflow. The guest changes the address in the original input field to the isolated proxy port `29507`; the host continues to listen on `29506`. The proxy runs only during the script's complete `run` and is shut down when it exits.
+
+This simulates approximately 150 ms RTT. It is not a substitute for testing with real frp networking.
+
+Use a new output directory for every run. The workflow uses the fixed seed `LBCD 0G4M`, Normal difficulty, two Azazels, no extra Mods, and a direct connection to `127.0.0.1:29506`.
+
+The tool navigates from the title screen through the save and Online menus to the LAN menu, enters the IP, selects characters, readies up, and starts. It then uses normal doors, collects items, uses The Fool card, shoots to clear rooms, explores separate rooms, fights a Boss, verifies that the party receives two rewards, pauses and resumes, enters the next floor, and checks the guest's first door transition. After entering a large room on the next floor, the guest continues normal shooting. The test checks that the camera is stable and the character remains visible.
+
+The original game allows one player to collect two rewards in succession. The test checks the increase in the party's total item count. The gameplay assistant uses only directional and shooting buttons. Character death, failed door transitions, callback errors, and similar events are recorded as failures.
+
+For simultaneous door transitions, both players first use directional input. The tool then moves anyone who has not arrived based on their actual position. If the original transition animation consumes the button hold time, a player still waiting at the door is not counted as having transitioned.
+
+The test does not call interfaces that change rooms, spawn items, restore health, kill enemies, or modify network frames. The observer only reads state. Input follows the normal native controller-processing and network-sending path.
+
+Combat on a fixed route still depends on the game state. When a run fails, inspect the records; a failed result must not be reported as a pass.
+
+## Automatically Saved Output
+
+- `tested-probe.dll`, `observer.lua`, `controller.py`: frozen copies of the DLL, observer, and control script actually used for this run.
+- `actions.jsonl`: action timestamps, buttons, hold durations, and milestone state.
+- `*-host.png`, `*-client.png`, and matching JSON files: actual screenshots and each side's room state.
+- Continuous frame archives for host and guest: rendered frames and the `frames.csv` time index.
+- `*-game-before-close.log`, `*-probe-before-close.log`: both sides' logs frozen before either side is closed.
+- `*-probe-this-run.log`: native logs from this launch only, so errors from earlier runs in the isolated directory are not mistaken for current failures.
+- `report.json`: workflow result, errors, and verification scope. Screenshots still require visual review.
+- `*-final-observer.json`: final state for both sides frozen before either client is closed, so closing the host cannot leave only the guest lobby state to inspect.
+- `*-recording.mkv`: when `--ffmpeg` is specified, a lossless continuous recording archived automatically after both sides close.
+- `*-filmstrip.png` and matching JSON: continuous frames from this side while a teammate passes through a door, including frame numbers and timestamps.
+- `visual-candidates.json`: automatic screening results for abnormal black frames while this side remains in the same room.
+- `*-floor-hud.jsonl` and `floor-hud-result.json`: continuous reads of multiplayer HUD ownership from before the floor transition until the original animation finishes. The local slot must continue to represent the same player; checking only after arrival on the next floor is insufficient.
+
+Frames are captured directly before `SwapBuffers` in the isolated process, then encoded by a background thread. This can record a client obscured by another window. Recording is enabled only in a marked isolated copy when `visual-capture.test` exists. Full gameplay defaults to approximately 10 fps and records dropped frames. Targeted flicker tests can use a 16 ms sampling interval; actual intervals and dropped frames are written to the time index.
+
+This is useful for checking characters, cameras, shadows, and persistent flicker. It cannot prove that a flicker lasting only one rendered frame never occurs. A local direct connection also cannot replace an frp latency test.
+
+Black-frame screening is advisory and does not replace visual inspection. A normal room-transition fade is not classified as a teammate door-transition flicker. Compare the host screenshots for `large-room-clear`, `shop-separated`, and `client-door-1`: when the guest enters and leaves a small Shop, the host's large room must not display the small-room wall-shadow border. Also inspect `second-floor` and `second-floor-arrival-settled`: both sides must retain original multiplayer health, cards, and active-item slots, with each camera and stat panel assigned to the local player.
+
+Without `--ffmpeg`, continuous PNG frames are retained. After both clients close, run `archive_gameplay.py` and `review_gameplay.py` separately; both accept `--ffmpeg`.
+
+After a run, use `archive_gameplay.py RUN_DIRECTORY --ffmpeg "$ISAAC_FFMPEG"` to convert continuous PNGs into a lossless RGB video and verify the frame count and first-frame pixels. Key screenshots, state, and time indices are retained. The complete continuous recording is stored as `*-recording.mkv`, avoiding large collections of PNGs after every run.
+
+## Step-by-Step Manual Inspection
+
+When the route needs to be adjusted based on screenshots, use the same output directory and operate in steps:
+
+```bash
+python3 tools/manual_gameplay.py capture --name CHECKPOINT --output "$ISAAC_RUN_OUTPUT"
 ```
 
-增加 `--latency-ms 75` 可在同一流程中给 UDP 的两个方向各加入
-75 ms 延迟；客机通过原版输入框改填隔离代理端口 `29507`，房主仍监听
-`29506`。代理只在脚本的完整 `run` 期间运行，退出后关闭。
-这代表模拟约 150 ms RTT，不能替代实际 frp 测试。
+Directional inputs are `u/d/l/r`. Shooting buttons `a/b/x/y` correspond to down/right/left/up. `rb` uses a card; `start` pauses or resumes. Combine buttons with `+`. Continuous frames are always saved automatically. Door transitions and completed combat also save milestone screenshots for both sides.
 
-每轮必须使用新的输出目录。流程固定为种子 `LBCD 0G4M`、普通难度、
-两名阿撒泻勒、额外 Mod 关闭、直接连接 `127.0.0.1:29506`。
-工具从标题、存档和 Online 菜单进入局域网菜单，输入 IP、选择角色、
-准备并开始。随后正常走门、捡道具、用愚者卡、射击清房、分房探索、
-打 Boss、验证全队获得两份奖励、暂停与恢复、走进下一层，再检查客机第一次过门。
-客机在下一层的大房间进门后继续正常射击，核对镜头稳定后角色仍在可见区域。
-原版允许一名玩家连续取走两份奖励，测试按全队道具增加数量判断。
-战斗助手只使用方向和射击按钮；角色死亡、走门失败、回调报错等会记录为失败。
-同时过门先使用双方方向输入，再按实际位置完成尚未到达者的移动；原生过场动画消耗按键时长时，不把仍在门口等待视为已经过门。
+## Fixed Regression Workflow
 
-这里没有调用换房、生成道具、回血、击杀敌人或修改网络帧的测试接口。
-观察器只读取状态，输入经正常的原生手柄处理和网络发送路径执行。
-固定路线的战斗仍受游戏情况影响；失败时查看记录，不能把失败结果当作通过。
+The full fixed regression can be run in one command.
 
-输出自动保存：
+The default `gameplay` suite starts one pair of clients from the menu and connects once. In the same run it checks movement prediction; White Fire changes and native room-clear recovery; conditional door-entry protection; active-item input and Battery Plug; Collar and Nine Lives revival; Brimstone charge bars; split-room Boss announcements; the Glowing Hourglass on host and guest, including cross-floor rewind; Devil Room doors; Rerun, the five-pip Dice Room, and the R key; and finally Mirror Room direction and large-room camera behavior. Fixture state is cleared between cases, but the same multiplayer session and game processes are kept alive. Network frame numbers continue increasing; the game is not restarted. Logs must show exactly one run start per side and a completion record for every check.
 
-- `tested-probe.dll`、`observer.lua`、`controller.py`：冻结本轮实际使用的 DLL、观察器和操作脚本。
-- `actions.jsonl`：操作时间、按钮、持续时间和里程碑状态。
-- `*-host.png`、`*-client.png` 及同名 JSON：两端实际画面与各自房间状态。
-- 主机与客机的连续帧归档：连续渲染画面和 `frames.csv` 时间索引。
-- `*-game-before-close.log`、`*-probe-before-close.log`：关闭任何一端前冻结的双方日志。
-- `*-probe-this-run.log`：仅本次启动的原生日志，避免把隔离目录以前的错误当作本轮错误。
-- `report.json`：流程结果、错误和验证范围；画面仍需检查。
-- `*-final-observer.json`：关闭任意客户端之前冻结的双方最终状态，避免退出房主后只读到客机大厅。
-- `*-recording.mkv`：指定 `--ffmpeg` 后，关闭两端再自动归档的无损连续录像。
-- `*-filmstrip.png` 和同名 JSON：队友过门时本端画面的连续图表、帧号和时间。
-- `visual-candidates.json`：本端房间保持不变时，异常黑帧的自动筛查结果。
-- `*-floor-hud.jsonl` 和 `floor-hud-result.json`：从换层前到原生动画结束持续读取多人 HUD 归属，要求本机栏位保持相同玩家，避免只检查到达下一层后的结果。
+Only while waiting between targeted cases that have already completed may the idle character receive temporary protection. The next case restores normal damage cooldowns and checks that no dead or ghost character remains. The ordinary one-floor workflow does not use this protection.
 
-画面直接在隔离进程的 `SwapBuffers` 前读取，再由后台线程编码，
-可以记录被另一窗口遮挡的客户端。录制只在带标记的隔离副本且存在
-`visual-capture.test` 时开启。完整游玩默认约 10 fps，并记录丢帧数；定向闪屏用例可设置 16 ms 采样间隔，实际间隔和丢帧写入时间索引。
-它适合查角色、镜头、阴影和持续闪屏，不能证明不存在只持续一个渲染帧的闪屏。
-本机直连也不能替代 frp 延迟测试。
-黑帧筛查是提示，不能代替看画面，也不把正常换房的淡出算作队友过门闪屏。
-必须对照 `large-room-clear`、`shop-separated`、`client-door-1` 的房主画面：
-客机进出小商店时，房主大房间里不应出现小房间的墙面阴影边框。
-另需检查 `second-floor` 和 `second-floor-arrival-settled`：两端沿用原版
-多人血量、卡牌与主动栏，各自镜头和属性归属本机玩家。
-没有指定 `--ffmpeg` 时保留连续 PNG；可在关闭后分别运行
-`archive_gameplay.py` 和 `review_gameplay.py`，二者都接受 `--ffmpeg`。
+The Dice Room fixture prepares the original five-pip floor and lets the character step on it, allowing the original collision logic to trigger the reset. White Fire first uses an unexplored combat room. During a room clear, it handles child enemies created by original enemy deaths. The test White Fire is removed before returning to avoid repeated contact at the doorway.
 
-关闭本轮后，可用 `archive_gameplay.py 本轮目录 --ffmpeg "$ISAAC_FFMPEG"`
-将连续 PNG 转为无损 RGB 视频，并验证帧数与第一帧像素。关键截图、
-状态和时间索引会保留，完整连续画面保存到 `*-recording.mkv`，避免每轮堆积大量 PNG。
+`gameplay-suite.lua` and the matching JSON freeze the original cases, relative timestamps, source hashes, and checkpoints. To run only these continuous cases, add `--cases gameplay`. Existing individual case names can still be used to isolate a failure.
 
-需要根据画面调整路线时，使用同一个输出目录分步操作：
+Save/resume, unexpected disconnects, and floor changes during loading affect connection lifecycle and remain separate tests. Installation/loading and HUD ownership, the first Boss reward and revival, and host flicker recording also retain their own explicit setup requirements.
 
-```sh
-python3 tools/manual_gameplay.py launch --output "$ISAAC_RUN_OUTPUT"
-python3 tools/manual_gameplay.py boot --output "$ISAAC_RUN_OUTPUT"
-python3 tools/manual_gameplay.py pad client --buttons r+b --frames 30 --output "$ISAAC_RUN_OUTPUT"
-python3 tools/manual_gameplay.py door host --slot 1 --output "$ISAAC_RUN_OUTPUT"
-python3 tools/manual_gameplay.py fight --output "$ISAAC_RUN_OUTPUT"
-python3 tools/manual_gameplay.py state --output "$ISAAC_RUN_OUTPUT"
-python3 tools/manual_gameplay.py capture --name 检查点 --output "$ISAAC_RUN_OUTPUT"
-python3 tools/manual_gameplay.py close --output "$ISAAC_RUN_OUTPUT"
-```
+Finally, run the one-floor workflow completed through the normal menu and controller inputs. Targeted fixtures do not replace normal gameplay testing. `check_mirror_camera.py` checks character movement and camera offset on every render; original animations, character bodies, and charge bars still need visual review in the recording.
 
-方向 `u/d/l/r`，射击 `a/b/x/y` 分别为下/右/左/上，`rb` 用卡，
-`start` 暂停／恢复；组合按钮用 `+` 连接。连续画面始终自动保存，
-走门和战斗完成也会自动保存双方里程碑截图。
+Each run freezes one DLL hash, saves per-case logs, and writes an overall result. Screenshots must still be reviewed as described above. Continuous regression automatically saves key frames to the checkpoint archive, with actual frame numbers and network timestamps in the index.
 
-完整固定回归可一次运行：
+Continuous cases record both host and guest screens. If `--ffmpeg` is specified, after both clients exit the recordings are automatically archived as lossless `host-recording.mkv` and `client-recording.mkv`, retaining checkpoints and `frames.csv`; otherwise all PNGs are kept. Rerun, Dice Room, and the R key are checked on both sides for floor state and preserved items, health, and resources. Missing logs or recordings cause the test to fail.
 
-```sh
-python3 tools/validate_replica.py \
-  --output "$ISAAC_RUN_OUTPUT" \
-  --latency-ms 75 --ffmpeg "$ISAAC_FFMPEG"
-```
+Adding `--goodtrip "$ISAAC_GOODTRIP_MOD"` copies that Mod unchanged into both isolated clients. It additionally checks map-input/cursor isolation during simultaneous use, local room caches, and host-side execution of guest teleport requests. The normal installation directory is not modified. This targeted fixture first prepares two visited and cleared rooms, then uses the original controller map and directional shooting input to select a destination. It does not replace Good Trip's teleport function.
 
-默认先运行 `gameplay`：一对客户端只从菜单连接并开局一次，在同一场游戏里依次完成
-移动预测、白火变化与原生清房恢复、条件性进门保护、主动按键／电插头、项圈／九命猫复活、硫磺火蓄力条、
-分房 Boss 播报、发光沙漏的主客机及跨层回退、恶魔房门、再爽／5 点骰子房／R 键，
-最后检查镜子房方向和大房间镜头。项目之间清理夹具状态，保留同一场联机和游戏进程；
-网络帧编号继续递增，不重开游戏。日志核对每端只有一次开局和每项检查的完成记录。
-仅在定向用例已完成、等待下一项时保护闲置角色；下一项恢复正常伤害冷却，并检查没有遗留死亡／幽灵角色。普通操作的一层流程没有这项保护。
-骰子房夹具准备原版 5 点地板，让角色踩上去，由原版碰撞逻辑触发重置。
-白火先使用未探索的战斗房；清理房间时处理原版敌人死亡后产生的子怪，返回前移除测试白火，避免门口重复触碰。
-`gameplay-suite.lua` 和同名 JSON 冻结原始用例、相对时间、源码哈希和检查点。
-仅运行这些连续项目可以增加 `--cases gameplay`；已有单项名称仍可用于定位失败。
-
-保存续玩、意外掉线及加载期间换层会改变连接生命周期，保留独立运行。
-安装加载与 HUD 归属、首次 Boss 奖励与复活、房主闪屏录制也各自保留明确的准备条件。
-最后再跑普通菜单和手柄输入完成的一层流程；定向夹具不代替正常游玩测试。
-`check_mirror_camera.py` 检查每次渲染的
-角色位移和镜头偏移；原生动画、角色身体和蓄力条仍要查看录制画面。
-每轮固定同一 DLL 哈希，保存各项日志和总结果；画面仍需按上述要求检查。
-连续回归自动把关键画面保存到 检查点归档，索引包含实际帧号和网络时间。
-连续用例同时记录主客机画面；指定 `--ffmpeg` 时，两端退出后自动归档为无损 `host-recording.mkv`、`client-recording.mkv`，保留检查点和
-`frames.csv`；否则保留全部 PNG。再爽、骰子房和 R 键核对两端楼层及保留的道具、
-血量和资源；日志或录制不足会使测试失败。
-
-增加 `--goodtrip "$ISAAC_GOODTRIP_MOD"` 会把该 Mod 原样复制到两个隔离客户端，额外检查同时操作时的地图输入／选择光标隔离、本机房间缓存及房主执行客机传送；正式安装目录不改动。这个定向夹具先准备两个已访问的清理房间，然后用原生手柄地图／射击方向输入选择目标，不直接替换 Good Trip 的传送函数。
-
-定向闪屏测试使用 `run_network_engine.py --native-record-view 0 --frame-ms 16` 保存实际后缓冲画面；`check_peer_flash.py 结果目录 --ffmpeg "$ISAAC_FFMPEG"` 只检查房主未换房的游戏帧，输出亮度异常候选、采样间隔及丢帧数。它能复现原生后台房间加载导致的一帧全黑，但仍不能证明采样间隙没有更短的视觉问题。
+The targeted flicker test uses `run_network_engine.py --native-record-view 0 --frame-ms 16` to save actual back-buffer frames. `check_peer_flash.py OUTPUT_DIRECTORY --ffmpeg "$ISAAC_FFMPEG"` checks only game frames where the host has not changed rooms and reports brightness-anomaly candidates, sample intervals, and dropped frames. It can reproduce a one-frame full-black image caused by original background-room loading, but it cannot prove that no shorter visual issue occurred between samples.
