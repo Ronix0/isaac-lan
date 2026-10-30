@@ -59,7 +59,7 @@ for slot = 0, 2 do
             if executeHook then
                 return executeHook(owner, text)
             end
-            return "结果：" .. text
+            return "Result: " .. text
         end,
         roll = function(n)
             assert(slot == 0, "A guest generated a dice result")
@@ -74,7 +74,7 @@ for slot = 0, 2 do
         end,
         feedback = function(text)
             feedbackCalls[#feedbackCalls + 1] = { slot, text }
-            return "反馈：" .. text
+            return "Feedback: " .. text
         end,
     }, wire)
     peers[slot + 1] = { chat = chat, info = info, context = context }
@@ -132,9 +132,9 @@ inbox[1][1] = {
 }
 poll()
 assert(#packets == 0 and #host.messages == 0 and #guest.messages == 0 and #other.messages == 0)
-assert(guest.submit("/e 只有我看到"))
+assert(guest.submit("/e only I can see"))
 assert(#guest.messages == 2 and #host.messages == 0 and #other.messages == 0)
-assert(guest.messages[1].command and guest.messages[1].text == "/e 只有我看到")
+assert(guest.messages[1].command and guest.messages[1].text == "/e only I can see")
 assert(next(guest.bubbles) == nil)
 assert(guest.submit("你好，队友"))
 poll()
@@ -146,28 +146,28 @@ local replay = packets[#packets][2]
 poll()
 inbox[1][#inbox[1] + 1] = replay
 poll()
-assert(rolls == 1 and host.bubbles[1].text == "2P 掷骰：D20 = 20")
+assert(rolls == 1 and host.bubbles[1].text == "2P rolled: D20 = 20")
 assert(
     guest.bubbles[1].text == host.bubbles[1].text and other.bubbles[1].text == host.bubbles[1].text
 )
 local before = #other.messages
-host.output("私有结果", { owner = 1, audience = "self", bubble = false })
+host.output("Private result", { owner = 1, audience = "self", bubble = false })
 poll()
-assert(guest.messages[#guest.messages].text == "私有结果" and #other.messages == before)
-host.output("共同结果", { owner = 1, audience = "party", bubble = true })
+assert(guest.messages[#guest.messages].text == "Private result" and #other.messages == before)
+host.output("Shared result", { owner = 1, audience = "party", bubble = true })
 poll()
 assert(
-    other.messages[#other.messages].text == "共同结果"
-        and other.bubbles[1].text == "共同结果"
+    other.messages[#other.messages].text == "Shared result"
+        and other.bubbles[1].text == "Shared result"
 )
-assert(not guest.output("伪造广播", { audience = "party" }))
+assert(not guest.output("Forged broadcast", { audience = "party" }))
 assert(guest.submit("/console unknown_native_command arbitrary arguments"))
 poll()
 host.step()
 poll()
 assert(executions[1][1] == 1 and executions[1][2] == "unknown_native_command arbitrary arguments")
 assert(
-    guest.messages[#guest.messages].text == "结果：unknown_native_command arbitrary arguments"
+    guest.messages[#guest.messages].text == "Result: unknown_native_command arbitrary arguments"
 )
 assert(#other.messages == before + 1)
 assert(not guest.submit("/giveitem c1"))
@@ -177,7 +177,7 @@ poll()
 peers[1].info.worldEpoch = 2
 host.step()
 poll()
-assert(#executions == 1 and guest.messages[#guest.messages].text:find("房间已变化"))
+assert(#executions == 1 and guest.messages[#guest.messages].text:find("room has changed"))
 peers[2].info.worldEpoch = 2
 local old = #guest.messages
 assert(guest.sendEmote(1))
@@ -233,7 +233,7 @@ local executed = #executions
 peers[2].context.index = 85
 host.step()
 poll()
-assert(#executions == executed and guest.messages[#guest.messages].text:find("房间已变化"))
+assert(#executions == executed and guest.messages[#guest.messages].text:find("room has changed"))
 peers[2].context.index = 84
 -- Synchronous output inherits the sender; failures must release that context.
 executeHook = function()
@@ -258,7 +258,7 @@ local beforeHost, beforeOther = #host.messages, #other.messages
 local beforeBubble = guest.bubbles[1]
 for _, command in ipairs({ "/d1000", "/d1000000000", "/d" .. string.rep("9", 309) }) do
     assert(not guest.submit(command))
-    assert(guest.messages[#guest.messages].text == "骰子面数 N 为 1～999 的整数")
+    assert(guest.messages[#guest.messages].text == "The number of sides N must be an integer from 1 to 999")
 end
 poll()
 assert(rolls == beforeRolls and #packets == beforePackets, "Rejected dice reached the network")
@@ -267,8 +267,8 @@ assert(guest.bubbles[1] == beforeBubble, "Rejected dice replaced a bubble")
 assert(guest.submit("/d999"))
 poll()
 for _, peer in ipairs(peers) do
-    assert(peer.chat.messages[#peer.chat.messages].text == "2P 掷骰：D999 = 999")
-    assert(peer.chat.bubbles[1].text == "2P 掷骰：D999 = 999")
+    assert(peer.chat.messages[#peer.chat.messages].text == "2P rolled: D999 = 999")
+    assert(peer.chat.bubbles[1].text == "2P rolled: D999 = 999")
 end
 -- The host also enforces the limit when a peer bypasses its local parser.
 beforeRolls, beforeHost, beforeOther = rolls, #host.messages, #other.messages
@@ -286,7 +286,7 @@ inbox[1][#inbox[1] + 1] = {
 }
 poll()
 assert(rolls == beforeRolls and #host.messages == beforeHost and #other.messages == beforeOther + 1)
-assert(other.messages[#other.messages].text == "骰子面数 N 为 1～999 的整数")
+assert(other.messages[#other.messages].text == "The number of sides N must be an integer from 1 to 999")
 for index, text in ipairs({ "/21d6", "/19d6+2d3", "/d6+d0", "/d100b3", "/d6+2d3 extra" }) do
     beforeRolls, beforeHost, beforeOther = rolls, #host.messages, #other.messages
     inbox[1][#inbox[1] + 1] = {
@@ -320,12 +320,12 @@ inbox[1][#inbox[1] + 1] = mixedReplay
 poll()
 assert(rolls == beforeRolls + 3 and #samples == 0)
 for _, peer in ipairs(peers) do
-    assert(peer.chat.bubbles[1].text == "2P 掷骰：D6 + 2D3 = 4 + [1 + 3] = 8")
+    assert(peer.chat.bubbles[1].text == "2P rolled: D6 + 2D3 = 4 + [1 + 3] = 8")
 end
 samples = { 10, 10, 1 }
 assert(guest.submit("/d100p"))
 poll()
-assert(other.bubbles[1].text == "2P 掷骰：D100p = 惩罚[100, 10] → 100")
+assert(other.bubbles[1].text == "2P rolled: D100p = penalty[100, 10] → 100")
 -- Random failures do not publish partial results or replace the previous bubble.
 beforeHost, beforeOther, beforeBubble = #host.messages, #other.messages, guest.bubbles[1]
 local calls = 0
@@ -338,7 +338,7 @@ rollHook = function()
 end
 assert(guest.submit("/2d6"))
 poll()
-assert(guest.messages[#guest.messages].text == "掷骰失败，请重试")
+assert(guest.messages[#guest.messages].text == "Dice roll failed. Please try again")
 assert(#host.messages == beforeHost and #other.messages == beforeOther)
 assert(guest.bubbles[1] == beforeBubble)
 rollHook = nil
@@ -354,10 +354,10 @@ for _, peer in ipairs(peers) do
 end
 peers[1].context.index = 85
 beforeHost = #host.messages
-assert(guest.submit("同房可见 --room"))
+assert(guest.submit("Visible in this room --room"))
 poll()
 assert(#host.messages == beforeHost and next(host.bubbles) == nil)
-assert(guest.bubbles[1].text == "【房间】同房可见")
+assert(guest.bubbles[1].text == "[Room] 同房可见")
 assert(other.bubbles[1].text == guest.bubbles[1].text)
 assert(guest.submit("/2d6 --room"))
 local roomReplay = packets[#packets][2]
@@ -366,35 +366,35 @@ poll()
 inbox[1][#inbox[1] + 1] = roomReplay
 poll()
 assert(rolls == beforeRolls + 2 and #host.messages == beforeHost)
-assert(guest.bubbles[1].text == "【房间】2P 掷骰：2D6 = [6 + 6] = 12")
+assert(guest.bubbles[1].text == "[Room] 2P rolled: 2D6 = [6 + 6] = 12")
 assert(other.bubbles[1].text == guest.bubbles[1].text)
 -- Equal room indices in different dimensions do not share room messages.
 peers[3].context.dimension = 1
 beforeOther = #other.messages
-assert(guest.submit("只有本房间 --room"))
+assert(guest.submit("Only this room --room"))
 poll()
 assert(#host.messages == beforeHost and #other.messages == beforeOther)
-assert(guest.bubbles[1].text == "【房间】只有本房间")
-assert(guest.submit("默认全队"))
+assert(guest.bubbles[1].text == "[Room] 只有本房间")
+assert(guest.submit("Default party message"))
 poll()
-assert(host.bubbles[1].text == "默认全队" and other.bubbles[1].text == "默认全队")
+assert(host.bubbles[1].text == "Default party message" and other.bubbles[1].text == "Default party message")
 assert(host.submit("/d6 --room"))
 beforeOther = #other.messages
 local guestCount = #guest.messages
 poll()
-assert(host.bubbles[0].text == "【房间】1P 掷骰：D6 = 6")
+assert(host.bubbles[0].text == "[Room] 1P rolled: D6 = 6")
 assert(#guest.messages == guestCount and #other.messages == beforeOther)
 -- Room recipients are chosen at dispatch, including the host only when it shares the room.
 peers[1].context.index, peers[3].context.dimension = 84, 0
-assert(host.output("房间输出", { owner = 1, audience = "room" }))
+assert(host.output("Room output", { owner = 1, audience = "room" }))
 poll()
 for _, peer in ipairs(peers) do
-    assert(peer.chat.messages[#peer.chat.messages].text == "【房间】房间输出")
+    assert(peer.chat.messages[#peer.chat.messages].text == "[Room] Room output")
 end
-assert(not guest.output("伪造房间广播", { audience = "room" }))
+assert(not guest.output("Forged room broadcast", { audience = "room" }))
 peers[1].info.connected = 3
 beforeOther = #other.messages
-assert(guest.submit("离线成员不接收 --room"))
+assert(guest.submit("Offline member should not receive --room"))
 poll()
 assert(#other.messages == beforeOther)
 peers[1].info.connected = 7
@@ -413,7 +413,7 @@ for _, change in ipairs({
     change.object[change.key] = previous
     assert(rolls == beforeRolls and #host.messages == beforeHost and #other.messages == beforeOther)
     assert(
-        guest.messages[#guest.messages].text == "房间消息未发送：角色或房间已变化"
+        guest.messages[#guest.messages].text == "Room message not sent: The character or room has changed"
     )
 end
 beforeRolls, beforeHost, beforeOther = rolls, #host.messages, #other.messages
@@ -421,8 +421,8 @@ peers[1].info.ready = 0
 assert(guest.submit("/d6 --room"))
 poll()
 assert(rolls == beforeRolls and #host.messages == beforeHost and #other.messages == beforeOther)
-assert(guest.messages[#guest.messages].text == "房间消息未发送：游戏尚未就绪")
-assert(not host.output("房间未就绪", { audience = "room" }))
+assert(guest.messages[#guest.messages].text == "Room message not sent: The game is not ready")
+assert(not host.output("Room not ready", { audience = "room" }))
 peers[1].info.ready = 1
 -- Silent native commands still leave an exact, private, non-bubble submission record.
 executeHook = function()
@@ -461,8 +461,8 @@ assert(#guest.messages == guestBefore + 1 and #other.messages == otherBefore)
 assert(host.submit("/d6"))
 poll()
 for _, peer in ipairs(peers) do
-    assert(peer.chat.messages[#peer.chat.messages].text == "1P 掷骰：D6 = 6")
-    assert(peer.chat.bubbles[0].text == "1P 掷骰：D6 = 6")
+    assert(peer.chat.messages[#peer.chat.messages].text == "1P rolled: D6 = 6")
+    assert(peer.chat.bubbles[0].text == "1P rolled: D6 = 6")
 end
 executeHook = nil
 host.clearBubbles()
@@ -503,21 +503,21 @@ for _, alias in ipairs({ "/h", "/help" }) do
         assert(result:find(command, 1, true), "Help omitted " .. command)
     end
     assert(not help or help == result, "Help aliases returned different content")
-    assert(result:find("1～999", 1, true), "Help did not show the current dice range")
+    assert(result:find("1 to 999", 1, true), "Help did not show the current dice range")
     assert(not result:find("/c help", 1, true), "Help advertised a command absent from vanilla")
     help = result
 end
 -- Feedback runs on the submitting machine only, including before readiness.
-for _, text in ipairs({ "/feedback 进房后卡住", "/FB 进房后卡住", "/feedback" }) do
+for _, text in ipairs({ "/feedback stuck after entering room", "/FB stuck after entering room", "/feedback" }) do
     local first = #guest.messages + 1
     assert(guest.submit(text))
     assert(guest.messages[first].command and guest.messages[first].text == text)
     local reply = guest.messages[first + 1]
     assert(reply.kind == "system" and not reply.bubble and reply.owner == 1)
-    assert(reply.text == "反馈：" .. (text == "/feedback" and "" or "进房后卡住"))
+    assert(reply.text == "Feedback: " .. (text == "/feedback" and "" or "stuck after entering room"))
 end
 assert(
-    #feedbackCalls == 3 and feedbackCalls[1][1] == 1 and feedbackCalls[1][2] == "进房后卡住"
+    #feedbackCalls == 3 and feedbackCalls[1][1] == 1 and feedbackCalls[1][2] == "stuck after entering room"
 )
 poll()
 assert(#packets == packetCount and #executions == executionCount)
@@ -561,7 +561,7 @@ local previousRolls = rolls
 assert(host.roll(1, 100.0) == 100)
 poll()
 for _, peer in ipairs(peers) do
-    assert(#peer.chat.messages == 1 and peer.chat.messages[1].text == "2P 掷骰：D100 = 100")
+    assert(#peer.chat.messages == 1 and peer.chat.messages[1].text == "2P rolled: D100 = 100")
     assert(peer.chat.messages[1].owner == 1 and peer.chat.messages[1].bubble)
 end
 assert(rolls == previousRolls + 1)
@@ -578,5 +578,5 @@ rollHook = function()
 end
 assert(host.roll(1, 100) == nil)
 poll()
-assert(guest.messages[#guest.messages].text == "掷骰失败，请重试")
+assert(guest.messages[#guest.messages].text == "Dice roll failed. Please try again")
 assert(#host.messages == 1 and #other.messages == 1)
