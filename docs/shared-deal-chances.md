@@ -1,37 +1,37 @@
-# 全队共享恶魔房／天使房概率
+# Shared Devil Room and Angel Room Chances
 
-恶魔房和天使房的概率属于整队。房主使用全队的原版道具、饰品、受击、交易和楼层历史计算；客机使用房主的计算结果。玩家分处不同房间时也适用。增加和降低都影响同一份概率，多个玩家的 HUD 百分比不会直接相加。
+Devil Room and Angel Room chances belong to the party as a whole. The host calculates them using the party's original items, trinkets, damage taken, deals, and floor history. Guests use the host's result, including when players are in different rooms. Increases and decreases affect the same shared chance; HUD percentages from multiple players are not added directly.
 
-保留原版的叠加和优先级：例如多个五芒星可以增加原版允许的额外概率，重复羊头和相同钥匙碎片不会凭空叠加；圣体、忏悔书、美德之书及楼层天使修正仍按原版判定。房间类型已经被原版确定后，不重新抽签或改写已有房间。星象房概率不属于该共享机制。
+Original stacking and priority are preserved. For example, multiple Pentagrams can increase the extra chance allowed by the original game, while duplicate Goat Heads and identical key pieces do not stack arbitrarily. Sacred Heart, Book of Virtues, Book of Belial, and floor-specific Angel modifiers retain their original rules. Once the original game has determined a room type, it is not rerolled or rewritten. Planetarium chance is not part of this shared system.
 
-## 模块与同步契约
+## Modules and Synchronization Contract
 
-- [`src/bridge/sync/deals.lua`](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/deals.lua) 采集、校验和应用整队概率；[`app/world.lua`](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/app/world.lua) 仅装配组件。顶层第 19 项为 `deals = { total, angel }`。`total` 是原版总开门概率，可超过 1；`angel` 是原版条件天使房概率，范围 0–1。通常显示的恶魔／天使概率分别为 `min(total, 1) * (1 - angel)`、`min(total, 1) * angel`；原版仍处理不允许开门的楼层和双重性显示。
-- [`src/compat/items/deal_chances.h`](https://github.com/BMingSY/isaac-lan/blob/main/src/compat/items/deal_chances.h) 接收各原版查询的普通浮点数，合并跨房间效果；同一份全队库存与楼层惩罚不会因查询多个房间而被重复累加。
-- 客机在库存应用后保存该结果。原版 HUD 的两个概率查询读取同一份已应用结果，客机不因本地受击记录或道具恢复副作用自行重算。楼层屏障、新局和原生楼层清理清空缓存；旧代次状态不能应用到新楼层。
-- 只同步两个浮点数，不逐个同步概率道具或复制道具给房主。协议、schema 和指纹要求统一见[同步契约](https://github.com/BMingSY/isaac-lan/blob/main/docs/synchronization.md#校验与失败边界)。
+- [`src/bridge/sync/deals.lua`](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/deals.lua) captures, validates, and applies the party-wide chances; [`app/world.lua`](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/app/world.lua) only assembles the component. Top-level field 19 is `deals = { total, angel }`. `total` is the original total door chance and may exceed 1; `angel` is the original conditional Angel Room chance, in the range 0–1. The usual displayed Devil/Angel chances are `min(total, 1) * (1 - angel)` and `min(total, 1) * angel`, respectively. The original game still handles floors where a door cannot appear and duality display.
+- [`src/compat/items/deal_chances.h`](https://github.com/BMingSY/isaac-lan/blob/main/src/compat/items/deal_chances.h) receives ordinary floating-point values from original queries and combines effects across rooms. The same party inventory and floor penalty are not accumulated repeatedly when querying multiple rooms.
+- Guests store the result after inventory application. Both original HUD chance queries read the same applied result; guests do not recalculate it from local damage history or inventory-restoration side effects. Floor barriers, new runs, and native floor cleanup clear the cache; state from an old generation cannot be applied to a new floor.
+- Only two floating-point values are synchronized. Chance-granting items are not synchronized one by one or copied to the host. Protocol, schema, and fingerprint requirements are defined in the [Synchronization Contract](https://github.com/BMingSY/isaac-lan/blob/main/docs/synchronization.md#validation-and-failure-boundaries).
 
-## 必要的原生能力
+## Required Native Capabilities
 
-现有 Lua API 不能让实际恶魔／天使房生成临时读取分房后的完整玩家名单，也不能覆盖原版 Found HUD 使用的内部条件天使概率。因此在 J460 后端提供具名 `deal_chances()` 查询／应用与 `deal_chances_reset()` 清理能力，原版查询在限定的上下文中执行，公式与战斗模拟名单仍由原版管理。
+The existing Lua API cannot temporarily expose the complete player list for a split-room simulation when an actual Devil/Angel Room is generated, nor can it override the internal conditional Angel chance used by the original Found HUD. The J460 backend therefore provides named `deal_chances()` query/application and `deal_chances_reset()` cleanup capabilities. Original queries execute in a bounded context; the original game still manages the formula and combat-simulation player list.
 
-适用 J460，游戏标识见[后端参考](https://github.com/BMingSY/isaac-lan/blob/main/docs/native-backend.md)。原生入口如下：
+This applies to J460; see the [backend reference](https://github.com/BMingSY/isaac-lan/blob/main/docs/native-backend.md) for the game identity. Native entry points:
 
-| 入口 | RVA | 用途与 ABI |
+| Entry point | RVA | Purpose and ABI |
 | --- | --- | --- |
-| `Room::GetDevilRoomChance` | `0x3f92b0` | Lua 公开查询、HUD 和实际开门共用；`thiscall`，x87 返回 |
-| 原版条件天使概率查询 | `0x3f96f0` | HUD 与房间类型初始化共用；无参数，XMM0 返回 |
-| `Level::InitializeDevilAngelRoom` | `0x3499a0` | 决定实际生成类型；`thiscall(bool, bool)` |
-| `Room::TrySpawnDevilRoomDoor` | `0x3f83b0` | 原版清房开门及公开 API；`thiscall(bool, bool)` |
+| `Room::GetDevilRoomChance` | `0x3f92b0` | Shared by public Lua query, HUD, and actual door generation; `thiscall`, x87 return |
+| Original conditional Angel chance query | `0x3f96f0` | Shared by HUD and room-type initialization; no arguments, returns in XMM0 |
+| `Level::InitializeDevilAngelRoom` | `0x3499a0` | Determines the actual generated room type; `thiscall(bool, bool)` |
+| `Room::TrySpawnDevilRoomDoor` | `0x3f83b0` | Original room-clear door generation and public API; `thiscall(bool, bool)` |
 
-四个入口均受启动签名校验。条件天使查询的 SSE 返回约定由后端桥接，普通 C++／Lua 浮点接口使用正常 ABI，返回边界须正确转换 x87 与 XMM0。
+All four entry points are protected by startup signature validation. The conditional Angel query's SSE return convention is bridged by the backend. Ordinary C++/Lua floating-point interfaces use the normal ABI; x87 and XMM0 return values must be converted correctly.
 
-具名查询、HUD 和实际生成使用同一原生计算入口。未启用联机会话时保持单人规则。
+The named query, HUD, and actual room generation use the same native calculation entry point. Outside an active multiplayer session, single-player behavior is unchanged.
 
-概率查询和房间类型初始化短暂借用现有 `TeamScope` 的完整名单，退出后恢复原来房内名单；不移动角色，不运行额外实体更新，不分配或释放原生对象。实际开门只在房主执行。
+Chance queries and room-type initialization temporarily borrow the complete player list through the existing `TeamScope`, then restore the original in-room list. They do not move characters, run extra entity updates, or allocate/free native objects. Actual door generation runs only on the host.
 
-原版额外的 Boss 房红心受击惩罚依赖当前房间。查询时，如果已加载本层原版指定的最终 Boss 房，短暂借用其 Room 指针、房间索引和维度，随后恢复，确保玩家走出 Boss 房不会隐藏该惩罚。只读取既有房间，不加载 Boss 房、不消耗生成 RNG、不改写受击记录。其余受击、交易、乞丐和捐款等楼层状态沿用房主已有的全局原版状态。
+The original extra red-heart damage penalty in Boss Rooms depends on the current room. During a query, if the original final Boss Room for the current floor is already loaded, its Room pointer, room index, and dimension are temporarily borrowed and then restored. This ensures that leaving the Boss Room does not hide the penalty. Only an existing room is read; the Boss Room is not loaded, generation RNG is not consumed, and damage records are not rewritten. Other floor state, such as damage taken, deals, beggars, and donations, uses the host's existing global original-game state.
 
-原版部分临时保证开门效果保存在 Room 中。用相同的全队／Boss 惩罚上下文查询已有房间对象，取原版已经计算的最大总概率，从而让异房保证效果也对整队生效；不把同一效果相加，不复制效果，不延长原版对象生命周期。该处理仅适用于原版总概率查询已经识别的房间效果。
+Some temporary original effects that guarantee a door are stored in the Room. The same party/Boss-penalty context queries existing room objects and reads the maximum total chance already calculated by the original game. This lets a guarantee in another room apply to the whole party without adding the same effect twice, copying the effect, or extending the original object's lifetime. This handling applies only to room effects already recognized by the original total-chance query.
 
-API 仅允许客机写有限、非负且可表示为 float 的总概率和 0–1 的条件天使概率，先整体校验后更新一对值，不允许房主接收客机概率。缓存只保存数值，不保存原生指针。规则依据以实际 J460 调用链为准；[Room Lua API 文档](https://wofsauge.github.io/IsaacDocs/rep/Room.html#getdevilroomchance) 用于核对公开查询的含义，旧 Repentance 的示例公式不直接移植到 Repentance+。
+The API allows guests to write only a finite, non-negative total chance representable as a float and a conditional Angel chance from 0 to 1. Both values are validated together before the pair is updated. The host does not accept guest-provided chances. The cache stores numbers only, never native pointers. The rules follow the actual J460 call chain. The [Room Lua API documentation](https://wofsauge.github.io/IsaacDocs/rep/Room.html#getdevilroomchance) is used to verify the public query's meaning; example formulas from older Repentance versions are not copied directly into Repentance+.
