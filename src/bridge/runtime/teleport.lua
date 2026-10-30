@@ -278,7 +278,7 @@ return function(deps)
                 end
                 if #matches == 0 then
                     return {
-                        text = "This floor has no generated " .. (names[selection.roomType] or "that room"),
+                        text = "No " .. (names[selection.roomType] or "room of that type") .. " has been generated on this floor.",
                     }
                 elseif #matches > 1 then
                     return {
