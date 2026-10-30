@@ -21,20 +21,20 @@ roll(" 1D6 + 2d3 - 1 ", { 4, 1, 3 }, "D6 + 2D3 - 1 = 4 + [1 + 3] - 1 = 7")
 roll("d1-2d6-3", { 1, 6, 6 }, "D1 - 2D6 - 3 = 1 - [6 + 6] - 3 = -14")
 roll("d6+0", { 3 }, "D6 + 0 = 3 + 0 = 3")
 roll("d6+9999", { 3 }, "D6 + 9999 = 3 + 9999 = 10002")
-roll("d100b", { 4, 7, 2 }, "D100b = 奖励[74, 24] → 24")
-roll("1D100P1", { 4, 7, 2 }, "D100p = 惩罚[74, 24] → 74")
-roll("d100b2", { 4, 7, 2, 1 }, "D100b2 = 奖励[74, 24, 14] → 14")
-roll("d100p2", { 4, 7, 2, 1 }, "D100p2 = 惩罚[74, 24, 14] → 74")
-roll("d100b", { 10, 10, 1 }, "D100b = 奖励[100, 10] → 10")
-roll("d100p", { 10, 10, 1 }, "D100p = 惩罚[100, 10] → 100")
-roll("d100b", { 1, 10, 10 }, "D100b = 奖励[1, 1] → 1")
-roll("d100p", { 10, 10, 10 }, "D100p = 惩罚[100, 100] → 100")
+roll("d100b", { 4, 7, 2 }, "D100b = bonus[74, 24] → 24")
+roll("1D100P1", { 4, 7, 2 }, "D100p = penalty[74, 24] → 74")
+roll("d100b2", { 4, 7, 2, 1 }, "D100b2 = bonus[74, 24, 14] → 14")
+roll("d100p2", { 4, 7, 2, 1 }, "D100p2 = penalty[74, 24, 14] → 74")
+roll("d100b", { 10, 10, 1 }, "D100b = bonus[100, 10] → 10")
+roll("d100p", { 10, 10, 1 }, "D100p = penalty[100, 10] → 100")
+roll("d100b", { 1, 10, 10 }, "D100b = bonus[1, 1] → 1")
+roll("d100p", { 10, 10, 10 }, "D100p = penalty[100, 100] → 100")
 roll(
     "2d100b+d6",
     { 4, 7, 2, 1, 10, 9, 5 },
-    "2D100b + D6 = [奖励[74, 24] → 24 + 奖励[1, 91] → 1] + 5 = 30"
+    "2D100b + D6 = [bonus[74, 24] → 24 + bonus[1, 91] → 1] + 5 = 30"
 )
-roll("d6-d100p", { 6, 10, 10, 1 }, "D6 - D100p = 6 - (惩罚[100, 10] → 100) = -94")
+roll("d6-d100p", { 6, 10, 10, 1 }, "D6 - D100p = 6 - (penalty[100, 10] → 100) = -94")
 -- Every possible pair of percentile candidates with a shared units die,
 -- including 100 and both candidate orders, must choose its numeric min/max.
 for left = 1, 100 do
@@ -50,12 +50,12 @@ for left = 1, 100 do
             roll(
                 "d100b",
                 values,
-                "D100b = 奖励[" .. left .. ", " .. right .. "] → " .. math.min(left, right)
+                "D100b = bonus[" .. left .. ", " .. right .. "] → " .. math.min(left, right)
             )
             roll(
                 "d100p",
                 values,
-                "D100p = 惩罚[" .. left .. ", " .. right .. "] → " .. math.max(left, right)
+                "D100p = penalty[" .. left .. ", " .. right .. "] → " .. math.max(left, right)
             )
         end
     end
@@ -137,5 +137,5 @@ end
 local longest = assert(dice.roll(assert(dice.parse("20d100p2", maxSides)), function(n)
     return n
 end))
-assert(#("【房间】4P 掷骰：" .. longest) <= 2048)
+assert(#("[Room] 4P rolled: " .. longest) <= 2048)
 print("PASS mixed dice, bonuses, penalties, all percentile pairs, bounds and random failures")
