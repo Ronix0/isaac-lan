@@ -1,162 +1,162 @@
-# 网络与状态同步
+# Network and State Synchronization
 
-房主运行权威玩法，客机提交输入并恢复房主发布的状态。网络层只处理消息和字节，不识别道具、Boss 或游戏对象；状态采集与应用由桥接同步层负责。
+The host runs authoritative gameplay. Guests submit input and restore the state published by the host. The network layer handles messages and bytes only; it does not identify items, Bosses, or game objects. State capture and application belong to the bridge synchronization layer.
 
-## 数据流与职责
+## Data Flow and Responsibilities
 
 ```mermaid
 flowchart LR
-    I[客机输入] --> H[房主模拟]
-    H --> C[采集完整视图]
-    C --> L[同步层拆分实时与低频字段]
-    L --> E[C++ 二进制编码]
-    E --> D[Zstd 完整或参考快照压缩]
-    D --> T[UDP 实时通道与可靠恢复]
-    T --> R[还原完整字节]
-    R --> A[C++ 解码与 Lua 副本应用]
-    A --> P[客机本机显示]
-    A -->|已应用回执| D
+    I[Guest input] --> H[Host simulation]
+    H --> C[Capture complete view]
+    C --> L[Split real-time and low-frequency fields]
+    L --> E[C++ binary encoding]
+    E --> D[Zstd full or reference-snapshot compression]
+    D --> T[UDP real-time channel and reliable recovery]
+    T --> R[Reconstruct complete bytes]
+    R --> A[C++ decoding and Lua replica application]
+    A --> P[Local guest presentation]
+    A -->|Applied acknowledgement| D
 ```
 
-| 数据 | 方向 | 交付语义 |
+| Data | Direction | Delivery semantics |
 | --- | --- | --- |
-| 输入与请求 | 客机 → 房主 | 持有值取最新值，按下边沿保留到消费；请求由房主验证身份与权限 |
-| 实时视图 `WorldState` | 房主 → 对应客机 | 每份可还原为完整状态；实时视图允许丢失，丢失不阻塞更新的视图 |
-| 可靠事务 | 双向，以房主发布为主 | 大厅、开局、重开、检查点、换层、回退、结束和返回大厅按序交付，不参与视图合并 |
-| 聊天通信 `communication` | 客机请求 → 房主；房主 → 接收者 | 独立限额的可靠字节消息，不随世界快照合并；内容契约见[聊天与控制台](https://github.com/BMingSY/isaac-lan/blob/main/docs/chat-console.md) |
+| Input and requests | Guest → Host | Held values use the latest value; press edges are retained until consumed. The host validates request identity and permissions. |
+| Real-time `WorldState` view | Host → Each guest | Every view can be restored as a complete state. Real-time views may be lost; a lost view does not block newer views. |
+| Reliable transactions | Bidirectional, primarily published by the host | Lobby, start, restart, checkpoint, floor transition, rewind, end, and return-to-lobby are delivered in order and are not merged into views. |
+| Chat communication (`communication`) | Guest request → Host; Host → recipients | Reliable byte messages with an independent limit; not merged into world snapshots. See [Chat and Console](https://github.com/BMingSY/isaac-lan/blob/main/docs/chat-console.md) for the content contract. |
 
-生命周期消息 `lifecycle` 使用独立限额的可靠通道，发送者由连接确定；运行层校验投票所属的运行标识、代次和在线名单。全员同意后的 `restart` 消息携带新运行标识、世界代次和开局设置，`ready` 同时校验运行标识与首 tick。投票及退出／重建顺序见[全队重新开局](https://github.com/BMingSY/isaac-lan/blob/main/docs/session-lifecycle.md#全队重新开局)。
+Lifecycle messages (`lifecycle`) use a separate reliable channel with an independent limit. The connection determines the sender; the runtime validates the run identity, generation, and online roster associated with a vote. The `restart` message sent after unanimous consent carries the new run identity, world generation, and startup settings. `ready` validates both run identity and the first tick. See [Party Restart](https://github.com/BMingSY/isaac-lan/blob/main/docs/session-lifecycle.md#party-restart) for voting and exit/rebuild order.
 
-通关后的 `returnLobby` 回执携带当前运行标识。已退出的一端进入 `returning`，继续轮询连接而不启动游戏；房主收齐当前在线成员的回执后清理本局数据、提升大厅规则代次并发布 `lobby`。旧局回执与旧规则下的准备请求不能解除新大厅的屏障，结局播放速度不要求一致。
+The post-victory `returnLobby` acknowledgement carries the current run identity. A client that has exited enters `returning`, continues polling the connection, and does not start the game. After receiving acknowledgements from all currently online members, the host clears run data, advances the lobby rule generation, and publishes `lobby`. An acknowledgement from an old run or a ready request under old rules cannot release the new lobby barrier. Ending playback does not need to be synchronized frame-for-frame.
 
-第三方动作使用有独立限额的可靠消息，具体契约见 [Mod API](https://github.com/BMingSY/isaac-lan/blob/main/docs/third-party-mod-integration.md)。房主内部的 `Frame` 仅汇总输入，不用于让客机重放同一套玩法模拟。
+Third-party actions use reliable messages with an independent limit; see the [Mod API](https://github.com/BMingSY/isaac-lan/blob/main/docs/third-party-mod-integration.md) for the contract. The host's internal `Frame` aggregates input only; it is not used to make guests replay the same gameplay simulation.
 
-## 输入与时间
+## Input and Time
 
-客机按本机渲染帧采样输入，同一帧的重复轮询只采一次。`input_hz` 支持 30／60，默认 60；每份输入包含 16 个量化动作值、按下边沿和本机鼠标目标。卡顿后只发送当前采样，不补发积压的历史样本。
+Guests sample input on local render frames. Repeated polling during the same frame samples only once. `input_hz` supports 30/60 and defaults to 60. Each input contains 16 quantized action values, press edges, and the local mouse target. After a stall, only the current sample is sent; queued historical samples are not replayed.
 
-单人输入固定 43 字节：16 个大端 `uint16` 动作值、一个 `uint16` 边沿位图、一个 `uint8` 鼠标按住标记，以及两个大端 IEEE 754 `float32` 房间目标坐标。标记仅允许 0／1；坐标必须有限且绝对值不超过 32768，未按住时两轴必须为零。鼠标目标跟随输入序号和房间／楼层上下文，暂停与同层转场保留按住状态，换层、断线超时及会话清理释放。聊天和菜单捕获输入后，鼠标须先松开才能重新射击；托管期间由托管输入接管瞄准。
+Single-player input is fixed at 43 bytes: sixteen big-endian `uint16` action values, one `uint16` edge bitmap, one `uint8` mouse-held flag, and two big-endian IEEE 754 `float32` room-target coordinates. The flag must be 0 or 1. Coordinates must be finite and have absolute values no greater than 32768; both axes must be zero when the mouse is not held. The mouse target follows the input sequence and room/floor context. Pause and same-floor transitions preserve the held state; floor changes, disconnect timeout, and session cleanup release it. After chat or a menu captures input, the mouse must be released before shooting can resume. While controlling a character remotely, managed input takes over aiming.
 
-房主在原生模拟步骤前消费输入，完整更新正常为 30 Hz；运行中不等待每名客机逐帧提交。持有值可以复用，边沿消费后清除；超过 500 ms 没有新输入时使用中性输入。首次加载屏障见[会话生命周期](https://github.com/BMingSY/isaac-lan/blob/main/docs/session-lifecycle.md#大厅与开局)。
+The host consumes input before native simulation steps. A normal in-run update is 30 Hz; the host does not wait for every guest to submit an input sample each frame. Held values may be reused, while edges are cleared after consumption. If no new input arrives for more than 500 ms, neutral input is used. See [Session Lifecycle](https://github.com/BMingSY/isaac-lan/blob/main/docs/session-lifecycle.md#lobby-and-starting-a-run) for the initial loading barrier.
 
-客机完成加载并发送 `ready` 时，房主同时清空该席位的持有输入、边沿、房间上下文和确认序号。重连后的输入序号从零开始；第一份实时视图即使早于新输入到达，也不能携带上次连接的确认序号。
+When a guest finishes loading and sends `ready`, the host clears that slot's held input, edges, room context, and acknowledgement sequence. Input sequence numbering restarts at zero after reconnect. Even if the first real-time view arrives before new input, it cannot contain an acknowledgement sequence from the previous connection.
 
-| 标识 | 用途 |
+| Identifier | Purpose |
 | --- | --- |
-| `tick` | 权威状态的模拟序号，用于排序与应用回执 |
-| `inputSequences` | 房主已消费的各玩家输入序号，用于预测确认 |
-| `floorEpoch` | 换层、重建和回退的代次，用于隔离不同世界状态 |
-| 房间键 | `(dimension, roomIndex)`，与楼层代次共同限制输入的适用范围 |
+| `tick` | Simulation sequence of authoritative state; used for ordering and application acknowledgements |
+| `inputSequences` | Input sequences consumed by the host for each player; used to confirm prediction |
+| `floorEpoch` | Generation for floor changes, rebuilds, and rewinds; isolates different world states |
+| Room key | `(dimension, roomIndex)`; together with the floor generation, limits where input applies |
 
-回执确认的是状态应用完成，不比较双方的 RNG。菜单和本机界面消费本机物理输入；暂停、退出等会话操作走可靠命令。移动预测的显示边界见[房间与表现](https://github.com/BMingSY/isaac-lan/blob/main/docs/rooms-and-presentation.md#移动预测与镜头)。
+An acknowledgement confirms that state application completed; it does not compare the two sides' RNG. Menus and local interfaces consume local physical input. Pause and exit use reliable commands. See [Rooms and Presentation](https://github.com/BMingSY/isaac-lan/blob/main/docs/rooms-and-presentation.md#movement-prediction-and-camera) for the display boundary of movement prediction.
 
-## 完整视图与实体身份
+## Complete Views and Entity Identity
 
-每份视图包含全队主要角色状态、共同楼层与地图，以及接收者当前房间的实体、网格和表现。同房角色携带完整外观，异房角色保留多人 HUD 所需状态。角色的 `ControlsEnabled` 与 `ControlsCooldown` 同属权威状态；客机不推进原生角色更新，控制冷却的递减和归零必须随快照恢复。玩家字段同时携带 `Friction`，供本机重放蜘蛛网、地面减速后的移动。库存字段 12 `subplayer` 为 `false` 或 `{type, hearts}`，只恢复骸骨／灵魂隐藏形态的生命，不重建其道具库存。任意 Mod 私有表、Lua 源码和原生指针不进入视图。
+Each view contains the main state of all party characters, the shared floor and map, and the entities, grids, and presentation data for the recipient's current room. Characters in the same room carry full appearance data; characters in other rooms retain the state needed by the multiplayer HUD. Character `ControlsEnabled` and `ControlsCooldown` are authoritative state. Guests do not advance native character updates, so control-cooldown decrement and reset must be restored with the snapshot. Player fields also carry `Friction` for local movement replay after spider-web and floor slowdowns. Inventory field 12, `subplayer`, is `false` or `{type, hearts}`; it restores only the health of hidden bone/soul forms and does not rebuild their item inventory. Arbitrary private Mod tables, Lua source, and native pointers are not included in views.
 
-采集以 `(floorEpoch, tick)` 为不可变代次，在该代次内复用公共字段、角色和同房数据；缓存不跨 tick。分层投影复制角色与房间容器，编码缓存复用其不变的子表。仅有一个客机时不增加这类片段；多个客机共享角色字段，同房且同维度的客机还共享实体与网格编码。音效和演出按接收者筛选。字段由 [world_schema.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/world_schema.lua)、[fields.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/fields.lua) 和 [entity_schema.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/entity_schema.lua) 定义。泪弹、跟班、效果与精灵的常用属性通过[具名批量能力](https://github.com/BMingSY/isaac-lan/blob/main/docs/native-backend.md#实体字段批量读写)读写，Lua 模板决定字段顺序，版本后端保留原属性语义；其他类型使用游戏 Lua API。
+Capture uses the immutable generation `(floorEpoch, tick)` and reuses shared fields, characters, and same-room data within that generation. Caches do not cross ticks. Layered projection copies character and room containers, while the encoding cache reuses unchanged child tables. With only one guest, these fragments are not added. Multiple guests share character fields; guests in the same room and dimension also share entity and grid encoding. Sound and animations are filtered by recipient. Fields are defined in [world_schema.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/world_schema.lua), [fields.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/fields.lua), and [entity_schema.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/entity_schema.lua). Common properties for tears, familiars, effects, and sprites are read/written through [named batch capabilities](https://github.com/BMingSY/isaac-lan/blob/main/docs/native-backend.md#batched-entity-field-access). Lua templates determine field order; the version backend preserves original property semantics. Other types use the game's Lua API.
 
-[分层投影](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/layers.lua)把道具列表、饰品、地图、进度、诅咒、交易、药丸、生成道具定义、房间布局／轨道／夹层信息编码为低频依赖；充能、血量、消耗品、便便／合成袋／临时效果、位置、实体、网格、动画及一次性表现留在实时部分。采集仍逐 tick 执行，低频指传输按变化发送，不延后读取权威状态。UDP 依赖使用递增修订号和可靠有序交付，可引用上一份可靠依赖压缩；一次最多有一份未确认的可靠副本，其间的新变化合并为最新候选，允许跳过中间修订。初始视图可靠交付；建立应用确认基线后，尚未被应用确认的新修订同时内嵌于实时视图，避免可靠副本丢包阻塞整帧。内嵌副本可先于可靠副本到达，接收缓存按修订号合并，可靠压缩字典独立维护。实时视图明确引用修订号，客机仅在对应数据齐全时还原完整视图，不能套用最新库存或跨房间拼接。依赖缓存、未完成视图和修订号在代次屏障清理。
+[Layered projection](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/layers.lua) encodes item lists, trinkets, maps, progress, curses, deals, pills, generated item definitions, room layouts/tracks/sub-room data as low-frequency dependencies. Charge, health, consumables, poop/crafting-bag/temporary effects, positions, entities, grids, animations, and one-time presentation remain in the real-time portion. Capture still runs every tick. "Low frequency" means transmission is change-based, not that authoritative state is read later. UDP dependencies use increasing revision numbers and reliable ordered delivery, and may reference the previous reliable dependency for compression. At most one reliable copy is unacknowledged at a time; changes during that interval are merged into the latest candidate, so intermediate revisions may be skipped. The initial view is reliably delivered. After an application-acknowledgement baseline is established, new unacknowledged revisions are also embedded in real-time views, preventing a lost reliable copy from blocking an entire frame. An embedded copy may arrive before the reliable copy; the receive cache merges by revision number, and the reliable compression dictionary is maintained independently. Each real-time view explicitly references a revision number. A guest restores a complete view only when all corresponding data is available; it cannot apply the newest inventory to an older room or combine data across rooms. Dependency caches, incomplete views, and revision numbers are cleared at generation barriers.
 
-世界 schema 为 35，字段 `captured` 是主机开始本轮采集的单调时钟毫秒数；离线生成的无时钟状态使用 0。采集回调返回实时字节和可选依赖字节，应用回调的第五个参数接收对应依赖。完整状态的诊断采集仍由 `state.capture` 提供；生产传输使用 `state.captureTransfer`。
+World schema version is 35. The `captured` field is the monotonic millisecond clock when the host begins this capture; offline-generated states without a clock use 0. The capture callback returns real-time bytes and optional dependency bytes. The fifth argument to the application callback receives the matching dependencies. Diagnostic capture of a complete state is still provided by `state.capture`; production transport uses `state.captureTransfer`.
 
-角色的 `temporaryEffects`（字段 9）是按类别和编号排序的实际效果集合，每项为 `{kind, id, count}`：类别 1／2／3 分别为道具、饰品和 Null 效果。编号保留有符号 32 位值，层数为 1～65535，最多 4096 项，同类编号不得重复。副本先校验整组，再复制本机效果身份，按差值增减并清除权威集合中已不存在的效果；原生列表引用不跨越增删操作。这个集合供原生外观和状态查询使用，不调用 UseActiveItem／UsePill，也不在客机推进效果计时或结算玩法。
+A character's `temporaryEffects` (field 9) is the actual effect set sorted by category and ID. Each entry is `{kind, id, count}`; categories 1/2/3 represent collectibles, trinkets, and Null effects. IDs retain signed 32-bit values; stack count ranges from 1–65535; the set is limited to 4096 entries and duplicate IDs within a category are forbidden. The replica validates the whole group before copying local effect identities, applying count differences, and clearing effects that no longer exist in the authoritative set. Native list references are not retained across add/remove operations. This set is used for native appearance and state queries. It does not call UseActiveItem/UsePill, and guests do not advance effect timers or settle gameplay.
 
-角色 `pose` 的武器前缀由 [weapon_pose.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/weapon_pose.lua)读取：大端 `BBI4I4f` 头之后为五个武器槽，各槽以一字节存在标记开始；存在时依次为 `I4ffffI4`（类型、冷却、最大冷却、蓄力、原生蓄力上限、武器修正标志）。其后的装扮与层状态保持不透明。攻击显示可以构造只替换蓄力的本地副本，不能覆盖冷却、类型、权威快照或后续载荷；此副本不参与状态编码和发送。
+The weapon prefix in character `pose` is read by [weapon_pose.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/weapon_pose.lua): after a big-endian `BBI4I4f` header are five weapon slots. Each slot begins with a one-byte presence flag. When present, it is followed by `I4ffffI4` (type, cooldown, maximum cooldown, charge, native charge limit, and weapon modifier flags). Costume and layer state after this prefix remain opaque. Attack presentation may construct a local copy that replaces only the charge value; it cannot override cooldown, type, authoritative snapshots, or later payloads. This copy is not included in state encoding or transmission.
 
-实体字段 28 `tether` 为 `false` 或 `{points, sprite, ownerId, ownerPosition, familiarPosition}`；点载荷为大端 `u16` 数量及每点三个 `f32` 坐标。其几何与精灵来自权威跟班，客机仅绘制，并按本机身体与跟班显示位置平移端点。
+Entity field 28, `tether`, is `false` or `{points, sprite, ownerId, ownerPosition, familiarPosition}`. Point payloads contain a big-endian `u16` count followed by three `f32` coordinates per point. Geometry and sprite data come from the authoritative familiar. Guests only draw it and translate endpoints according to the local body and familiar display positions.
 
-NPC 字段 `npc` 是 25 字节记录：六个大端 float32 依次保存 `V1`、`V2` 和 `TargetPosition` 的 X／Y，末字节为 `IsBoss()` 的 0／1 分类。前两个暂存向量保留原生整数哨兵的浮点位模式；目标坐标必须有限，接收端在修改实体前检查整条记录。客机渲染和原生 Boss 血条使用同步的目标点与分类，不依赖被暂停的 NPC AI 来补齐状态。
+NPC field `npc` is a 25-byte record: six big-endian float32 values store X/Y for `V1`, `V2`, and `TargetPosition`, followed by a final byte containing the `IsBoss()` classification (0/1). The first two temporary vectors preserve the floating-point bit patterns of native integer sentinels. Target coordinates must be finite; the receiver validates the entire record before modifying an entity. Guest rendering and native Boss health bars use the synchronized target point and classification, rather than relying on paused NPC AI to complete the state.
 
-实体 ID 由房主原生身份表统一分配，状态采集和伤害事件共用同一身份；借用地址、InitSeed 与实体索引只用于识别原生对象是否替换，不在线上传输。客机维护 `ID → EntityPtr`。同一活动对象复用其 `EntityPtr` 与显示轨迹记录，原生引用失效或角色对象替换时重新建立引用；换房清理显示轨迹，退出清理全部引用。恢复时先回收过期实体，再创建／更新实体，最后绑定父、子、生成者、目标和角色持有引用。`held`（实体字段 27）是被抱起对象的稳定 ID，无对象或不在当前视图时为 `0`；异房角色同样清空旧链接。身份与本机地址、实体池槽位无关；原生对象仍由游戏分配和释放。特殊实体引用通过兼容组件和具名后端能力接入，见[原生能力参考](https://github.com/BMingSY/isaac-lan/blob/main/docs/native-backend.md#实体引用与房间数据)。
+Entity IDs are assigned centrally by the host's native identity table and are shared by state capture and damage events. Borrowed addresses, InitSeed, and entity indices are used only to detect whether a native object has been replaced; they are not transmitted. Guests maintain `ID → EntityPtr`. An active object reuses its `EntityPtr` and display-trajectory record. If a native reference becomes invalid or a character object is replaced, the reference is rebuilt. Room changes clear display trajectories; exit clears all references. Restoration first removes expired entities, then creates/updates entities, and finally binds parent, child, spawner, target, and character-carry references. `held` (entity field 27) is the stable ID of a carried object; it is `0` when no object exists or it is not in the current view. Old links are also cleared for characters in other rooms. Identity is independent of local addresses and entity-pool slots; native objects are still allocated and released by the game. Special entity references are integrated through compatibility components and named backend capabilities; see the [Native Capability Reference](https://github.com/BMingSY/isaac-lan/blob/main/docs/native-backend.md#entity-references-and-room-data).
 
-实体的兼容显示字段由 `compat/visuals` 按实体类型分派给对应适配；包含额外 Sprite 的组件复用实体编解码器的采集／恢复接口，保留原生缓存外观的所有权和生命周期。
+Compatibility display fields for entities are dispatched by `compat/visuals` according to entity type. Components with additional Sprites reuse the entity codec's capture/restore interface and preserve ownership and lifetime of native cached appearance.
 
-客机应用完整视图时遵循[恢复顺序](https://github.com/BMingSY/isaac-lan/blob/main/docs/layers-and-compatibility.md#采集与副本恢复)，全部成功后才提交 tick。原生楼层未准备好时保留最新视图，延后应用。普通状态允许在原生半帧边界应用；首次视图、暂停／名单变化、换层、换房及角色替换在完整更新边界处理。`betweenUpdates` 预检不写入房间或角色，返回 `false` 表示继续等待。
+When a guest applies a complete view, it follows the [restoration order](https://github.com/BMingSY/isaac-lan/blob/main/docs/layers-and-compatibility.md#capture-and-replica-restoration). The tick is committed only after every step succeeds. If the native floor is not ready, the latest view is retained and application is deferred. Ordinary state may be applied at a native half-frame boundary. The first view, pause/player-list changes, floor changes, room changes, and character replacement are handled at a full-update boundary. `betweenUpdates` preflight does not write to rooms or characters; returning `false` means to keep waiting.
 
-客机保留显示和资源清理所需的原生更新，拦截同步实体的玩法更新与碰撞。伤害、拾取、房门决策和道具效果由房主执行；副本恢复不重放使用动作。恢复及客机原生更新期间暂时关闭进度写入，避免库存重建利用本机收藏历史重新触发成就；主机发布的进度仍可显式应用，个人进度合并保留原有生命周期。
+Guests retain native updates needed for presentation and resource cleanup, while gameplay updates and collisions for synchronized entities are intercepted. Damage, pickups, door decisions, and item effects are executed by the host; replica restoration does not replay use actions. Progress writes are temporarily disabled during restoration and guest native updates to prevent inventory rebuilding from triggering achievements again through local collection history. Progress published by the host can still be explicitly applied, and personal progress merging retains its original lifecycle.
 
-## 战斗表现事件
+## Combat Presentation Events
 
-顶层 `combat` 是按接收者过滤的有界事件记录，随完整实时视图重复携带。记录由主机在原生 NPC 伤害判定返回后产生，包含递增序号、tick、楼层代次、房间、来源与目标实体 ID、接受结果和原生闪烁时长；接受结果包含 Mod 回调的否决，不表示已经扣除血量。血量、死亡和实体生命周期仍由权威状态决定。记录保留最多 90 tick、512 项，传输缺包由后续视图覆盖；长时间断流可以丢失纯表现，不影响玩法恢复。
+Top-level `combat` is a bounded event record filtered by recipient and repeated with complete real-time views. The host creates records after the original NPC damage check returns. Each record contains an increasing sequence number, tick, floor generation, room, source and target entity IDs, acceptance result, and original flash duration. The acceptance result includes cancellation by Mod callbacks; it does not mean health has already been deducted. Health, death, and entity lifecycle remain authoritative state. Records are retained for at most 90 ticks and 512 entries. Missing transport data is superseded by later views. A long interruption may lose presentation-only effects without affecting gameplay restoration.
 
-实体字段 `combat`（29）表示当前可预测接触的事实：0 为不参与，1 为可受击且允许闪烁的 NPC，2 为已经离开发射等待、无特殊 TearFlags 的普通蓝／血泪。主机读取实际弹体属性，不能用玩家属性替代；副本碰撞已关闭，不能从副本碰撞类反推主机资格。预测仍按本机发射者筛选。
+Entity field `combat` (29) describes whether contact prediction is currently allowed: 0 means excluded; 1 means a hittable NPC that can flash; 2 means an ordinary blue/red tear with no special TearFlags that has left the firing wait state. The host reads actual projectile properties and cannot substitute player properties. Replica collision is disabled, so eligibility cannot be inferred from replica collision classes. Prediction is still filtered by local shooter.
 
-客机在原生恢复之前验证事件长度、数量、序号、枚举和时长。表现组件按楼层／房间过滤，按事件序号去重，再用来源／目标实体身份匹配预测。旧状态或不同扩展指纹不能接入。表现时钟及取消规则见[房间与表现](https://github.com/BMingSY/isaac-lan/blob/main/docs/rooms-and-presentation.md#命中表现预测)。
+Before native restoration, the guest validates event length, count, sequence numbers, enums, and duration. The presentation component filters by floor/room, deduplicates by event sequence, then matches predictions using source/target entity identity. Old state or a different extension fingerprint cannot be used. See [Rooms and Presentation](https://github.com/BMingSY/isaac-lan/blob/main/docs/rooms-and-presentation.md#hit-presentation-prediction) for presentation clocks and cancellation rules.
 
-## 传输、压缩与积压
+## Transport, Compression, and Backlog
 
-连接使用 IPv4／IPv6 UDP，静态链接带有 [Windows 双栈适配](https://github.com/BMingSY/isaac-lan/blob/main/vendor/enet/README.isaac-lan.md)的 ENet 1.3.18。主机在同一端口接受两种地址族；系统不支持 IPv6 时回退到 IPv4 监听。客机按目标地址族建立套接字。域名在独立线程查询 A／AAAA 记录，候选地址去重后优先 IPv6、交替尝试两种地址族；连接失败或单地址等待耗尽后尝试下一候选，解析和连接共用 10 秒总期限。取消或重连使旧解析结果失效。
+Connections use IPv4/IPv6 UDP and statically linked ENet 1.3.18 with a [Windows dual-stack adaptation](https://github.com/BMingSY/isaac-lan/blob/main/vendor/enet/README.isaac-lan.md). The host accepts both address families on the same port and falls back to IPv4 listening when the system does not support IPv6. Guests create sockets for the destination address family. DNS A/AAAA records are resolved on a separate thread. Candidate addresses are deduplicated, IPv6 is preferred, and both address families are tried in alternating order. After a connection failure or single-address wait timeout, the next candidate is attempted. Resolution and connection share a total deadline of 10 seconds. Cancellation or reconnect invalidates old resolution results.
 
-菜单地址与端口分开输入；地址可为域名、IPv4 或 IPv6，IPv6 可带方括号，链路本地地址的 `%接口编号` 按连接发起端的接口编号解释。[命令端点](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/core/endpoint.lua)用 `[IPv6]:端口` 消除冒号歧义。地址族、128 位地址和接口编号只用于本地套接字与来源校验，不改变协议报文。DNS 解析不提供中继或 NAT 穿透，所选地址仍需可达且允许对应 UDP 端口。
+The lobby accepts address and port separately. An address may be a hostname, IPv4, or IPv6; IPv6 may be bracketed. A link-local address's `%interface-number` is interpreted using the interface number on the connection initiator. [Endpoint parsing](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/core/endpoint.lua) uses `[IPv6]:port` to remove colon ambiguity. Address family, 128-bit address, and interface number are used only for local sockets and source validation; they do not change protocol packets. DNS resolution does not provide relay or NAT traversal. The selected address must still be reachable and the corresponding UDP port must be allowed.
 
-每个会话的 [网络线程](https://github.com/BMingSY/isaac-lan/blob/main/src/net/udp_io.cpp)通过 socket 事件和唤醒事件处理连接、收发、消息封装、分块组装及实时视图压缩／解压。主线程的 `Session::poll` 只消费已交接的结果、推进协议状态；主机取得输入后仍在当前更新中推进游戏，不经过后台任务往返。聊天与心跳的字节收发不等待下一帧，聊天的业务分发和界面更新仍由主线程执行。
+Each session's [network thread](https://github.com/BMingSY/isaac-lan/blob/main/src/net/udp_io.cpp) uses socket and wake-up events to handle connections, sending/receiving, message framing, fragment assembly, and real-time view compression/decompression. Main-thread `Session::poll` consumes handed-off results and advances protocol state. After receiving input, the host still advances the game in the current update rather than round-tripping through a background task. Chat and heartbeat byte I/O do not wait for the next frame, while chat business dispatch and UI updates remain on the main thread.
 
-主线程通过有界单生产者／单消费者队列交换拥有独立存储的消息，最新视图使用单值邮箱替换尚未处理的旧值。网络工作线程不调用 Lua、游戏 API、日志回调或诊断回调；诊断样本有界交接后由主线程记录。存档和回退使用独立的 [大数据工作线程](https://github.com/BMingSY/isaac-lan/blob/main/src/net/byte_worker.cpp)，在后台压缩、解压并校验完整性，避免占住网络线程。原生存档采集、Continue 和副本应用必须在主线程执行。取消任务后，已开始的任务只完成其独立字节结果；旧会话退出等待在线程退休阶段完成，不阻塞下一次重连的启动。
+The main and network threads exchange independently owned messages through bounded single-producer/single-consumer queues. The latest view uses a single-value mailbox that replaces older unprocessed values. The network worker does not call Lua, game APIs, log callbacks, or diagnostic callbacks. Diagnostic samples are handed off through a bounded queue and recorded by the main thread. Saves and rewinds use a separate [bulk-data worker](https://github.com/BMingSY/isaac-lan/blob/main/src/net/byte_worker.cpp) to compress, decompress, and validate integrity in the background, avoiding blocking the network thread. Native save capture, Continue, and replica application must run on the main thread. After cancellation, a started task only completes its independent byte result. An old session waits for thread retirement during shutdown; this does not block startup of the next reconnect.
 
-游戏协议版本为 46。ENet 建连标记固定为 `ILAN`，不使用游戏协议号提前拒绝连接。双方先在可靠通道交换独立、未压缩的[兼容性报文](https://github.com/BMingSY/isaac-lan/blob/main/src/net/compatibility.h)，其信封、修订号和字段顺序独立于游戏协议。报文携带 Isaac LAN 版本号、扩展指纹和游戏协议号，三项必须完全一致；版本号来自 [VERSION](https://github.com/BMingSY/isaac-lan/blob/main/VERSION) 的编译值，扩展指纹包含目标游戏版本标识和 DLL 文件内容。预检通过前不解压或解析游戏消息，不接纳大厅席位，也不启动归队恢复。初次加入和重连共用这一检查。
+The game protocol version is 46. The ENet connection marker is fixed to `ILAN`; the game protocol number is not used to reject a connection before the handshake. Both sides first exchange a separate, uncompressed, reliable [compatibility message](https://github.com/BMingSY/isaac-lan/blob/main/src/net/compatibility.h). Its envelope, revision, and field order are independent of the game protocol. It carries the Isaac LAN version, extension fingerprint, and game protocol number. All three must match exactly. The version is compiled from [VERSION](https://github.com/BMingSY/isaac-lan/blob/main/VERSION); the extension fingerprint includes the target game-version identity and DLL contents. Before preflight succeeds, the client does not decompress or parse game messages, accept a lobby slot, or start reconnect recovery. Initial joins and reconnects use the same check.
 
-UDP 游戏消息使用消息封套和连接代次，按完整报文交接，不使用字节流长度前缀。[统一消息封装](https://github.com/BMingSY/isaac-lan/blob/main/src/net/wire_codec.h) 对至少 256 字节的控制、聊天及扩展消息尝试压缩，仅在包含封套后仍更小时使用 `0x80 + 压缩封套`；小消息和不可压缩消息保持原正文。实时视图、检查点和回退载荷先整体压缩再分块，不逐块重复压缩。
+UDP game messages use message envelopes and connection generations and are handed off as complete packets; no byte-stream length prefix is used. [Unified message framing](https://github.com/BMingSY/isaac-lan/blob/main/src/net/wire_codec.h) attempts compression for control, chat, and extension messages of at least 256 bytes. The `0x80 + compressed envelope` is used only when the complete envelope is still smaller. Small messages and messages that do not compress retain their original body. Real-time views, checkpoints, and rewind payloads are compressed as a whole before fragmentation, rather than compressing each fragment separately.
 
-[Zstd 适配器](https://github.com/BMingSY/isaac-lan/blob/main/src/core/zstd.cpp) 使用快速级别 `-1`。实时视图比较独立帧和引用已确认不可变快照的 prefix 帧，选择较小载荷；检查点及回退使用独立帧。无压缩收益时使用原始字节。prefix 直接引用完整快照，不训练字典或另外构造字节补丁。压缩上下文由所属工作线程持有并复用，每次调用结束清除借用的 prefix；不同客机之间不共享基线。实时视图首块标明完整／参考模式、基线 tick 与楼层代次。
+The [Zstd adapter](https://github.com/BMingSY/isaac-lan/blob/main/src/core/zstd.cpp) uses fast level `-1`. For real-time views, an independent frame is compared with a prefix frame referencing a confirmed immutable snapshot, and the smaller payload is selected. Checkpoints and rewinds use independent frames. Raw bytes are used when compression provides no benefit. Prefix compression references the complete snapshot directly; it does not train a dictionary or construct a separate byte patch. Compression contexts are owned and reused by their worker thread, and borrowed prefixes are cleared after each call. Different guests do not share baselines. The first fragment of a real-time view identifies full/reference mode, baseline tick, and floor generation.
 
-压缩封套为一字节模式和四字节大端原始长度：`0` 为原始字节，`3` 为独立 Zstd 帧，`4` 为 prefix 帧；`1`／`2` 仅保留旧 XPRESS／DEFLATE 读取。Zstd 帧必须含已知原始长度和内容校验和，不接受训练字典 ID、串接帧或尾随字节。解码前按通道检查输出大小和窗口：消息 4096 字节、实时视图 2 MiB、存档及回退 8 MiB。Zstd 静态链接，不依赖系统安装或额外 DLL。
+The compression envelope contains a one-byte mode and four-byte big-endian original length: `0` for raw bytes, `3` for an independent Zstd frame, and `4` for a prefix frame. `1`/`2` are reserved for reading legacy XPRESS/DEFLATE. A Zstd frame must contain a known original length and content checksum. Trained dictionary IDs, concatenated frames, and trailing bytes are rejected. Output size and window limits are checked before decoding per channel: 4096 bytes for messages, 2 MiB for real-time views, and 8 MiB for saves and rewinds. Zstd is statically linked and does not depend on a system installation or extra DLL.
 
-该增量位于完整状态编码之后，客机也要还原完整字节再解码。它减少传输量，不免除整份状态的采集、编码与解码成本。网络层不按游戏字段解释或修改状态。
+This delta layer runs after complete-state encoding. The guest must reconstruct the complete bytes before decoding. It reduces transmission size; it does not remove the cost of capturing, encoding, or decoding the complete state. The network layer does not interpret or modify game fields.
 
-UDP 使用四个通道：可靠控制、依赖与一次性按键；非可靠持有输入；非可靠实时视图；可靠完整视图恢复。ENet 负责连接、校验和及可靠重传，MTU 为 1200 字节。能放进一个报文的实时视图直接非可靠发送；超出 ENet 单包预算且分片数不超过 1024 时使用[独立分片](https://github.com/BMingSY/isaac-lan/blob/main/src/net/world_shards.h)，单包预算扣除 ENet 头、校验和与代次封套。每组最多 8 个 1024 字节数据片和 2 个 GF(256) 校验片，可恢复任意两个缺片；两三包的增量也使用同一路径，避免有序分片因新视图到达而丢弃旧视图的迟到片。分片携带视图 ID、总长度、组号和片号，无序交付、重复去除，整份恢复后才解压。超过纠错能力时等待更新视图；部分视图受数量和字节上限约束，不要求补完旧帧。单片末组只增加一个校验片。满组校验数据增加约 25% 载荷，两三片的小组占比更高，不提供持续丢包或带宽不足时的交付保证。
+UDP uses four channels: reliable control, dependencies, and one-time button presses; unreliable held input; unreliable real-time views; and reliable full-view recovery. ENet handles connection management, checksums, and reliable retransmission. MTU is 1200 bytes. Real-time views that fit in one packet are sent unreliably as-is. Larger views use [independent fragmentation](https://github.com/BMingSY/isaac-lan/blob/main/src/net/world_shards.h) when the fragment count is no more than 1024. The per-packet budget subtracts ENet headers, checksums, and generation envelopes. Each group has up to eight 1024-byte data fragments and two GF(256) parity fragments, allowing recovery of any two missing fragments. Small two- or three-packet deltas use the same path so late fragments of an older view are not discarded just because a newer view arrived. Fragments carry view ID, total length, group number, and fragment number. They are delivered out of order, duplicates are removed, and decompression occurs only after the complete view is reconstructed. If loss exceeds correction capacity, the receiver waits for a newer view. Partial views are bounded by count and bytes; older frames do not have to be completed. The final fragment of a full group adds only one parity fragment. A full group adds approximately 25% payload overhead; smaller groups of two or three fragments have a higher proportion. This does not guarantee delivery during sustained loss or insufficient bandwidth.
 
-发送端按完整视图限流，关闭 ENet 对单个无序包的随机丢弃，每轮服务最多移交 16 个片，避免大帧一次占满接收队列。回执超过两倍最低 RTT 且至少 200 ms 未推进时，新视图发送间隔至少 100 ms。可靠恢复同一时刻最多排队一份完整实时视图，间隔至少 500 ms；依赖仍必须匹配修订号，过期恢复结果不覆盖新状态。尚无应用确认基线时只推进这份恢复。已有基线时，实时视图使用独立的有界回执窗口，不等待旧恢复包的可靠重传结束；可靠恢复仍只保留一份。可靠事务末块移交 ENet 后，等待未确认尾部低于一个分块再发送新视图。各通道共享链路容量与可靠发送窗口，恢复流量与实时流量的容量需分别计算，不能把丢失记录退休当作 ENet 已释放恢复包。
+The sender rate-limits complete views and disables ENet's random dropping of individual unreliable packets. Each service round hands off at most 16 fragments to avoid filling the receive queue with one large frame. If acknowledgement progress has stalled for more than twice the minimum RTT and at least 200 ms, the interval between new views is at least 100 ms. Reliable recovery queues at most one complete real-time view at a time, with at least 500 ms between sends. Dependencies must still match their revision numbers; an expired recovery result cannot overwrite newer state. Before an application-acknowledgement baseline exists, only this recovery view advances state. Once a baseline exists, real-time views use an independent bounded acknowledgement window and do not wait for old recovery packets to finish reliable retransmission; only one reliable recovery candidate is retained. After the final fragment of a reliable transaction is handed to ENet, a new view waits until the unacknowledged tail is below one fragment. All channels share link capacity and the reliable send window. Capacity for recovery and real-time traffic must be calculated separately; retiring a loss record does not mean ENet has released the recovery packet.
 
-每个客机独立持有待发送的最新视图和已确认基线。每份 prefix 帧直接引用该客机已确认应用的基线，不依赖丢失的中间视图。确认推进压缩基线，并释放有界发送窗口；窗口按最低已测 RTT 设置，为丢失替补保留 8–16 份状态，同时限制未确认字节和缓存容量。UDP 对超过 500 ms 的未确认记录按丢失处理，释放空间以发送最新视图，不无限等待特定丢包的回执；可靠恢复的候选基线单独保留。缺失基线时丢弃当前增量，确认停滞时以完整视图恢复；持续收到应用确认时不强制周期性完整帧，prefix 不节省字节时仍使用完整编码。不把正常丢包当作协议损坏。
+Each guest has an independent latest pending view and confirmed baseline. Every prefix frame directly references that guest's confirmed-applied baseline and does not depend on lost intermediate views. Acknowledgement advances the compression baseline and releases the bounded send window. The window is set using minimum measured RTT, retaining 8–16 state records for loss replacement while also limiting unacknowledged bytes and cache capacity. UDP records unacknowledged for more than 500 ms are treated as lost and released so the latest view can be sent; the sender does not wait indefinitely for acknowledgement of a particular lost packet. The reliable recovery candidate is retained separately. If the baseline is missing, the current delta is discarded; if acknowledgement stalls, a full view is used for recovery. When application acknowledgements continue normally, periodic full frames are not forced. If prefix compression does not save bytes, full encoding is used. Normal packet loss is not treated as protocol corruption.
 
-应用回执走非可靠实时通道，使用无序报文，与持有输入的 ENet 顺序相互独立；只保留最新累计确认，每 100 ms 重复最新值，接收端按代次和已确认视图编号拒绝旧回执。这样较新的输入不会淘汰迟到的回执，回执也不会淘汰持有输入；代次屏障清除旧回执。大视图的无序片在 ENet 的同一个 1024 序号窗口内发送，必要时跳过窗口尾部；超过该窗口容量的极大载荷使用 ENet 分片和可靠恢复。
+Application acknowledgements use an unreliable real-time channel and unordered packets, independent of ENet ordering for held input. Only the latest cumulative acknowledgement is retained and repeated every 100 ms. The receiver rejects old acknowledgements by generation and acknowledged-view number. This prevents newer input from evicting a late acknowledgement and prevents acknowledgements from evicting held input. Generation barriers clear old acknowledgements. Unordered fragments for a large view are sent within the same ENet 1024-sequence window; the sender may skip the end of a window when needed. Extremely large payloads that exceed the window use ENet fragmentation and reliable recovery.
 
-UDP 持有输入只发送最新方向与输入序号，一次性按键通过 `inputEdges` 可靠消息发送，以输入序号去重，等待对应或更新的持有输入到达后消费。不同按下事件逐个在主机更新中消费，不能因重传或集中到达而重复、合并执行。事件与房间／楼层上下文绑定；超过 120 个输入样本、或最近持有输入超过 500 ms 未更新时失效。
+UDP held input sends only the latest direction and input sequence. One-time presses are sent through reliable `inputEdges` messages and deduplicated by input sequence. They are consumed after the corresponding or a newer held-input sample arrives. Distinct press events are consumed individually by host updates; retransmission or clustered arrival must not repeat or merge them. Events are bound to room/floor context and expire after more than 120 input samples or when held input has not been updated for more than 500 ms.
 
-主机的可靠代次屏障使旧视图和旧按键失效。实时通道抢先到达的下一代状态会被丢弃，待控制事务到达后由后续完整视图恢复；房间目的地和楼层推进仍由会话层决定。
+The host's reliable generation barrier invalidates old views and button presses. A next-generation state arriving early on the real-time channel is discarded until the control transaction arrives; a subsequent complete view restores state. Room destination and floor progression remain decisions of the session layer.
 
-| 限制 | 当前值 |
+| Limit | Current value |
 | --- | --- |
-| 玩家数 | 最多 4 人 |
-| 单消息正文／每段大块载荷 | 4096／3000 字节 |
-| 完整实时视图／检查点与存档 | 2／8 MiB |
-| 未确认视图记录 | 每客机 8–16 份，另保留一份可靠恢复候选 |
-| 未确认载荷阈值 | 64 KiB，可再容纳当前一份；UDP 在 500 ms 后释放丢失记录 |
-| 完整视图历史缓存 | 每连接 16 MiB；客机另限 32 份 |
-| 主线程与网络线程的消息交接 | 每方向每连接 128 条；已完成接收数据达到 4 MiB 时停止继续收包，可额外容纳当前一份视图或存档 |
-| 普通发送字节队列 | 每连接 256 KiB；UDP 可靠消息计到确认／释放；大数据按事务分批发送 |
-| 可靠大数据／后台字节任务 | 每连接 4 个大数据事务；每工作线程 4 个待处理任务 |
+| Players | Up to 4 |
+| Single message body / each large-data fragment | 4096 / 3000 bytes |
+| Complete real-time view / checkpoint and save | 2 / 8 MiB |
+| Unacknowledged view records | 8–16 per guest, plus one reliable recovery candidate |
+| Unacknowledged payload threshold | 64 KiB, with room for one additional current view; UDP loss records are released after 500 ms |
+| Complete-view history cache | 16 MiB per connection; guest is additionally limited to 32 views |
+| Main/network thread message handoff | 128 messages per direction per connection; stop receiving more when completed receive data reaches 4 MiB, with room for one current view or save |
+| Ordinary outgoing byte queue | 256 KiB per connection; UDP reliable messages count until acknowledged/released; large data is sent in transaction batches |
+| Reliable large-data/background byte tasks | 4 large-data transactions per connection; 4 pending tasks per worker thread |
 
-达到发送窗口上限时仅更新待发视图；UDP 窗口也可由超时释放，不要求每份视图都得到确认。任一客机的积压不要求主机暂停其他玩家。换层／回退事务使旧视图、组装状态和基线失效；新连接从完整视图建立基线，旧代次回执不能建立新基线。
+When the send window is full, only the pending latest view is updated. The UDP window may also release records on timeout; not every view requires an acknowledgement. Backlog for one guest does not require the host to pause other players. Floor-transition/rewind transactions invalidate old views, assembly state, and baselines. A new connection establishes a baseline from a complete view; acknowledgements from an old generation cannot establish a new baseline.
 
-## 状态编解码
+## State Encoding and Decoding
 
-Lua 决定游戏字段契约、采集与恢复顺序，通过游戏 API 或具名批量能力访问属性。[`state_encode(value, memo)`／`state_decode(bytes)`](https://github.com/BMingSY/isaac-lan/blob/main/src/engine/state_codec.cpp) 在主线程通过共用 Lua 5.3 ABI 批量处理数组，字节读写与大小限制位于可移植的 [state_codec.h](https://github.com/BMingSY/isaac-lan/blob/main/src/core/state_codec.h)。编解码接口不访问游戏对象、原生布局或网络连接。Lua [参考实现](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/codec.lua) 用于离线对照与未绑定原生能力的夹具。
+Lua defines the game-field contract, capture, and restoration order, and accesses properties through game APIs or named batch capabilities. [`state_encode(value, memo)` / `state_decode(bytes)`](https://github.com/BMingSY/isaac-lan/blob/main/src/engine/state_codec.cpp) batch-process arrays on the main thread through the shared Lua 5.3 ABI. Byte I/O and size limits are in the portable [state_codec.h](https://github.com/BMingSY/isaac-lan/blob/main/src/core/state_codec.h). The codec does not access game objects, native layouts, or network connections. The Lua [reference implementation](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/codec.lua) is used for offline comparison and fixtures without native bindings.
 
-值仅包含布尔、整数、有限 float32、字符串和普通数组。类型标记、整数宽度和大端格式由原生与 Lua 参考实现的逐字节对照检查；整数与浮点数的类型、负零及有符号 64 位值保持原样。编码使用连续缓冲区，Lua 分配失败时由 userdata 的终结器释放 C++ 缓冲区；正常返回或 C++ 校验失败立即释放。
+Values are limited to booleans, integers, finite float32 values, strings, and ordinary arrays. Type tags, integer widths, and big-endian encoding are checked byte-for-byte against the native and Lua reference implementations. Integer and floating-point types, negative zero, and signed 64-bit values are preserved. Encoding uses a contiguous buffer. If Lua allocation fails, the userdata finalizer releases the C++ buffer; on normal return or C++ validation failure, it is released immediately.
 
-`memo` 由采集组件持有，只标记当前采集代次内不可变的数组。缓存记录完整字节、节点数与相对深度，重复引用仍计入整份视图的预算；普通数组不自动缓存，不可在标记后修改内容或缓存元数据。
+The `memo` is owned by the capture component and marks only arrays immutable within the current capture generation. Cache entries record complete bytes, node count, and relative depth. Repeated references still count toward the budget for the entire view. Ordinary arrays are not cached automatically. Do not modify content or cache metadata after marking an array.
 
-客机仅在预检尚未进入原生恢复时保留最新解码结果，用于半帧延后到完整更新的同一份状态。字节或 tick 变化、楼层等待、视图重置及开始恢复都会使该缓存失效。库存比较直接检查角色类型、道具种类／数量和饰品槽，仍保留每 30 tick 的原生库存纠偏。
+When a guest applies a complete view, the latest decoded result is retained only if preflight has not yet entered native restoration and the same state must be deferred from a half-frame to a full update. Byte or tick changes, floor waiting, view reset, or beginning restoration invalidate this cache. Inventory comparison checks character type, collectible type/count, and trinket slots directly. Native inventory correction still runs every 30 ticks.
 
-泪弹、跟班、掉落物和效果实体的 `nativeFields`（实体字段 26）携带数值块，顺序为通用属性数组、类型属性数组、精灵偏移、精灵缩放和颜色；原位置 8、9、15、16、17 为 `false`。数值块沿用相同的标记和大端编码，由具名字段计划在原生端直接采集和恢复，避免逐帧构造、遍历中间 Lua 表。其他实体及离线 Lua 参考路径仍使用展开的属性数组，字段 26 为 `false`。实体字段 18 仅对泪弹携带帧龄，供客机预测识别同次射击；其他实体保留为 `false`，世界时钟仍由顶层帧号恢复。精灵字段 11 同样保留为 `false`，完整颜色（含 colorize）只在原生 Sprite 块中携带和应用一次。字段名称与顺序由 [entity_schema.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/entity_schema.lua)、[entity_codec.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/entity_codec.lua) 和 [fields.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/fields.lua) 定义，原生白名单不决定玩法或引用关系。
+For tears, familiars, pickups, and effect entities, `nativeFields` (entity field 26) carries a numeric block in this order: generic property array, type-specific property array, sprite offset, sprite scale, and color. Original positions 8, 9, 15, 16, and 17 are `false`. The numeric block uses the same tags and big-endian encoding. A named field plan captures/restores it directly on the native side, avoiding per-frame construction and traversal of intermediate Lua tables. Other entities and the offline Lua reference path continue to use expanded property arrays; entity field 26 is `false`. Entity field 18 carries frame age only for tears, allowing the guest to identify the same shot during prediction; other entities keep `false`, and the world clock is still restored from the top-level frame number. Sprite field 11 is also `false`; complete color, including colorize, is carried and applied exactly once in the native Sprite block. Field names and order are defined in [entity_schema.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/entity_schema.lua), [entity_codec.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/entity_codec.lua), and [fields.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/fields.lua). The native whitelist does not determine gameplay or reference relationships.
 
-## 校验与失败边界
+## Validation and Failure Boundaries
 
-| 边界 | 检查与结果 |
+| Boundary | Checks and result |
 | --- | --- |
-| 握手 | Isaac LAN 完整版本号、扩展指纹和协议号必须一致；第三方 Mod 指纹差异只提示 |
-| 消息与分块 | 校验字段范围、序号、偏移和完整性；UDP 丢弃重复、过期或代次不符的实时状态，畸形消息仍拒绝 |
-| 状态编码 | 只接受布尔、整数、有限 float32、字符串和数组；少于 250000 个节点，深度小于 12；字符串和数组长度最多 65535 |
-| 副本应用 | 校验楼层准备、角色控制器与实体字段；失败不提交完成 tick，已执行的原生写入不会自动回滚 |
+| Handshake | Full Isaac LAN version, extension fingerprint, and protocol number must match. Third-party Mod fingerprint differences are warnings only. |
+| Messages and fragments | Validate field ranges, sequence numbers, offsets, and integrity. UDP discards duplicate, expired, or wrong-generation real-time state; malformed messages are still rejected. |
+| State encoding | Accept only booleans, integers, finite float32 values, strings, and arrays; fewer than 250,000 nodes; depth below 12; string and array lengths up to 65,535. |
+| Replica application | Validate floor readiness, character/controller ownership, and entity fields. On failure, do not commit the completed tick; native writes already performed are not automatically rolled back. |
 
-协议与字段版本分别由 [protocol.h](https://github.com/BMingSY/isaac-lan/blob/main/src/net/protocol.h) 和 [world_schema.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/world_schema.lua) 管理。变更字段时同步更新生产者、消费者、版本／指纹和相关契约。
+Protocol and field versions are managed separately by [protocol.h](https://github.com/BMingSY/isaac-lan/blob/main/src/net/protocol.h) and [world_schema.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/sync/world_schema.lua). When changing fields, update producers, consumers, version/fingerprint, and related contracts together.
 
-兼容性失败只拒绝对应连接，房主在主线程记录原因与双方版本，其他玩家和原归队席位不受影响。客机状态中的 `compatibilityError` 保留 `reason`（`version`、`fingerprint`、`protocol` 或 `unavailable`）、`localVersion` 和 `remoteVersion`，由菜单显示失败原因及双方版本，下一次连接清除旧错误。同版本不同 DLL 显示构建不一致；对方未提供有效兼容性报文时，其版本为空并显示“未知”，不能据此断言具体版本不符。未支持此报文的旧版不能加入，其自身界面仍使用原有错误提示。
+A compatibility failure rejects only the corresponding connection. The host records the reason and both versions on the main thread; other players and original reconnect slots are unaffected. Guest state `compatibilityError` retains `reason` (`version`, `fingerprint`, `protocol`, or `unavailable`), `localVersion`, and `remoteVersion`. The menu displays the failure reason and both versions; the next connection clears the old error. Different DLLs with the same version show a build mismatch. If the peer does not provide a valid compatibility message, its version is empty and shown as "Unknown"; this does not prove a specific version mismatch. Older versions that do not support this message cannot join; their own interface continues to use the original error notice.
 
-世界字段版本为 36，精灵原生载荷使用格式 2，包含动画挂点帧和事件状态。角色字段 10 保存 `GetBabySkin()` 的身份，伴随角色在库存之前恢复该值。角色和服装在渲染边界仍恢复权威姿态；同名动画通过完整状态恢复，避免每帧重新初始化动画。不同字段版本不能互相应用，嵌入模块与 DLL 指纹继续参与连接校验。
+World field version is 36. Native sprite payload format is 2 and includes animation attachment frames and event state. Character field 10 stores the identity returned by `GetBabySkin()`; it is restored with the character before inventory. Characters and costumes still restore authoritative poses at the render boundary. Matching animation names are restored from the complete state to avoid reinitializing animation every frame. Different field versions cannot be applied to one another. Embedded modules and DLL fingerprints continue to participate in connection validation.
 
-世界字段 `challenge` 为 `false` 或 `[规则编号, 规则版本, 组件载荷]`，挑战组件验证并恢复自身的动态进度；具体契约见[联机挑战](https://github.com/BMingSY/isaac-lan/blob/main/docs/lan-challenges.md)。启用个人地图策略时，地图的显示与已探索字段按接收者投影；布局、清场与掉落仍由同一权威楼层采集。UDP 消息布局通过协议版本校验，世界字段与嵌入模块通过各自版本和扩展指纹校验。
+World field `challenge` is `false` or `[rule ID, rule version, component payload]`. The challenge component validates and restores its own dynamic progress; see [Multiplayer Challenges](https://github.com/BMingSY/isaac-lan/blob/main/docs/lan-challenges.md) for the contract. When a per-player map strategy is enabled, map display and exploration fields are projected by recipient. Layout, room clearing, and drops are still captured from the same authoritative floor. UDP message layout is checked through the protocol version; world fields and embedded modules are checked through their own versions and the extension fingerprint.
 
-客机协议或应用错误会结束其当前游戏并返回大厅；房主自身的桥接错误可能结束整场会话，详见[失败边界](https://github.com/BMingSY/isaac-lan/blob/main/docs/session-lifecycle.md#失败边界)。Ping 是包含主机消费回包及传输排队的往返时间，不能代替状态处理耗时；测量与排查方法见[诊断参考](https://github.com/BMingSY/isaac-lan/blob/main/docs/diagnostics-and-resource-testing.md)。
+A guest protocol or application error ends its current game and returns to the lobby. An error in the host's own bridge may end the entire session; see [Failure Boundaries](https://github.com/BMingSY/isaac-lan/blob/main/docs/session-lifecycle.md#failure-boundaries). Ping is round-trip time including host response processing and transport queueing; it is not a substitute for state-processing duration. See the [Diagnostics Reference](https://github.com/BMingSY/isaac-lan/blob/main/docs/diagnostics-and-resource-testing.md) for measurement and troubleshooting.
