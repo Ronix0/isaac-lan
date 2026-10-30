@@ -1,56 +1,56 @@
-# 第三方 Mod 自动适配器
+# Third-Party Mod Auto-Adapters
 
-自动兼容让尚未主动接入 API 的旧 Mod 可以在 LAN 中使用已有功能。包装在目标 Mod 加载、初始化时安装，会贯穿后续单机和 LAN 会话；因此方法在未联机时调用原函数，在 LAN 中才使用本机视图或主机动作。保留单机行为是这些包装的运行约束，安装依据是目标身份和实际所需接口；版本／源码约束仅在确有接口差异时使用。
+Automatic compatibility lets older Mods that have not explicitly integrated the API use supported features in LAN sessions. Wrappers are installed when the target Mod loads and initializes, and remain active in later single-player and LAN sessions. Therefore, methods call their original functions when multiplayer is inactive and use the local view or host actions only in LAN sessions. Preserving single-player behavior is a runtime requirement for these wrappers. Installation is based on target identity and the interfaces actually needed; version/source restrictions are used only when an interface difference makes them necessary.
 
-`IsaacLAN:RegisterAdapter(definition)` 返回停用函数。停用会清理本次 UI 安装和独立能力，但保留注册定义，不能在同一 Lua 环境重复注册同一 `id`；需要恢复时使用兼容开关。定义如下：
+`IsaacLAN:RegisterAdapter(definition)` returns a disable function. Disabling cleans up this installation's UI and independent capabilities but retains the registered definition. The same `id` cannot be registered twice in one Lua environment; use the compatibility toggle to re-enable it. Definition:
 
-| 字段／回调 | 契约 |
+| Field/callback | Contract |
 | --- | --- |
-| `id` | 唯一命名空间，字符及 64 字节上限与接入 ID 相同 |
-| `adapterVersion` | 正整数，表示适配实现版本；不代替上游版本／指纹 |
-| `modName` | 目标实际 `RegisterMod` 的名称，精确匹配 |
-| `targets` | 支持配置数组，每项必须有 `workshopId`，可选 `metadataVersion`、`sourceHash` |
-| `probe(target)` | 返回 `"ready"`、`"pending"` 或 `"unsupported", reason`；导出尚未完成时等待，接口不符时拒绝 |
-| `install(target, api)` | 探测就绪后安装；必须返回清理函数，不修改上游磁盘源码 |
-| `authority(api)` | 可选，注册独立主机动作；也必须返回清理函数，不依赖本机安装 UI Mod |
-| `dispatch(target, record, ...)` | 可选，包装目标回调；保留参数与返回值，不处理的路径调用并返回 `record.original(...)` |
+| `id` | Unique namespace, using the same character and 64-byte limit as integration IDs |
+| `adapterVersion` | Positive integer identifying the adapter implementation; it does not replace the upstream version/fingerprint |
+| `modName` | Exact name of the target's actual `RegisterMod` instance |
+| `targets` | Array of supported target configurations. Each entry must have `workshopId`; `metadataVersion` and `sourceHash` are optional |
+| `probe(target)` | Returns `"ready"`, `"pending"`, or `"unsupported", reason`; wait while exports are incomplete and reject incompatible interfaces |
+| `install(target, api)` | Installs after a successful probe; must return a cleanup function and must not modify upstream source files on disk |
+| `authority(api)` | Optional registration of independent host actions; must also return a cleanup function and must not depend on a local UI Mod being installed |
+| `dispatch(target, record, ...)` | Optional target-callback wrapper; preserves arguments and return values. Paths it does not handle must call and return `record.original(...)` |
 
-每个目标必须提供 `workshopId`。`metadataVersion` 和 `sourceHash` 为适配器主动选择的可选约束；内置 EID、Stats+、GoodTrip 适配按实际所需接口探测，不锁定发布版本或源码哈希。加载观察器结合实际 `RegisterMod` 实例、来源目录、启用状态和源码指纹确认目标。只存在目录、同名 Mod 或残留全局不会匹配。`target` 包含 `mod`、目录／版本／指纹和该来源加载的模块导出。`RegisterMod` 第二个参数不是 Mod 发布版本。
+Each target must provide a `workshopId`. `metadataVersion` and `sourceHash` are optional restrictions chosen by the adapter. Built-in EID, Stats+, and GoodTrip adapters probe the interfaces they actually need and do not lock to a release version or source hash. The load observer confirms the target using the actual `RegisterMod` instance, source directory, enabled state, and source fingerprint. A directory alone, a Mod with the same name, or a leftover global is not a match. `target` contains `mod`, directory/version/fingerprint information, and module exports loaded from that source. The second argument to `RegisterMod` is not the Mod release version.
 
-`workshopId` 为非空字符串；可选 `metadataVersion` 若提供也必须为非空字符串，`sourceHash` 若提供须为恰好 64 个小写十六进制字符。观察目标 `target` 的公开字段为 `mod`、`directory`、`workshopId`、`metadataVersion`、`sourceHash`、`modules`；`modules` 以实际 `require` 名为键保存来自该目录的已观察模块导出。安装阶段另提供 `target.addCleanup(fn)`。使用 `dispatch` 时，`record` 包含 `id`（游戏回调 ID）、`original`、`param`、`priority` 及包装函数 `wrapper`。
+`workshopId` must be a non-empty string. If provided, `metadataVersion` must also be a non-empty string, and `sourceHash` must contain exactly 64 lowercase hexadecimal characters. Public fields on the observed `target` are `mod`, `directory`, `workshopId`, `metadataVersion`, `sourceHash`, and `modules`. `modules` maps actual `require` names to observed module exports from that directory. During installation, `target.addCleanup(fn)` is also available. When using `dispatch`, `record` contains `id` (game callback ID), `original`, `param`, `priority`, and the wrapper function `wrapper`.
 
-源码指纹为 SHA-256：先输入 `Isaac LAN/compat-source-v1` 与零字节，再按相对路径排序输入每个 `.lua` 的相对路径、零字节、文件 SHA-256 的十六进制文本和零字节。`gtconfig.lua`、`eid_config.lua` 是配置文件，不计入源码身份；其余 Lua 包含语言与服务实现。版本和源码变化仍可用于诊断；只有适配器明确提供对应约束时才影响目标匹配。
+The source fingerprint is SHA-256. It first hashes `Isaac LAN/compat-source-v1` and a zero byte, then processes every `.lua` file in relative-path order: relative path, zero byte, lowercase hexadecimal file SHA-256, and zero byte. `gtconfig.lua` and `eid_config.lua` are configuration files and are excluded from source identity. Other Lua files, including language and service implementations, are included. Version and source changes may still be used for diagnostics; they affect target matching only when the adapter explicitly provides the corresponding restriction.
 
-`probe` 返回 `ready`、`pending` 或 `unsupported` 及原因。只在 `ready` 后安装一次；`pending` 在初始化后及首次回调前重试。`install` 中可用 `api:Attach(target.mod, definition.id)` 获取归属于该适配器的句柄，不会触发主动接入优先规则；目标 Mod 在安装回调以外主动注册时才让出。`install` 必须返回清理函数并调用 `lan:Close()` 释放自己的句柄，可用 `target.addCleanup(fn)` 提前登记部分安装的清理，确保异常时回滚。`authority` 在加载时注册独立主机能力，不因尚未开局或缺少本机 UI Mod 跳过。
+`probe` returns `ready`, `pending`, or `unsupported` and a reason. Installation occurs once, only after `ready`. A `pending` probe is retried after initialization and before the first callback. During `install`, `api:Attach(target.mod, definition.id)` obtains a handle owned by this adapter and does not trigger the priority rule for explicit integration. The target Mod takes priority only when it actively registers outside the adapter's installation callback. `install` must return a cleanup function and call `lan:Close()` to release its handle. Use `target.addCleanup(fn)` to register cleanup for partially completed installation so failures can roll back. `authority` registers independent host capabilities during loading and is not skipped just because a run has not started or a local UI Mod is absent.
 
-已登记的安装清理按后进先出执行，应只恢复仍由本适配器持有的方法和资源。兼容模块关闭后可重新开启，因此清理须能承受重复调用，重新安装不能重复加订阅或叠加包装。`probe`／`install` 抛错进入 `error`，安装未返回函数也视为失败；排查日志后再重新开启，不在每帧强行重装。独立能力清理与目标 UI 清理分别管理，目标主动接入只让出该实例，不自动推断独立能力的业务去留。
+Registered cleanup functions run in last-in, first-out order and should restore only methods and resources still owned by this adapter. A compatibility module can be disabled and re-enabled, so cleanup must tolerate repeated calls. Reinstallation must not duplicate subscriptions or stack wrappers. An exception in `probe` or `install`, or an installation that fails to return a function, enters `error`. Review logs before re-enabling; do not force reinstall every frame. Independent-capability cleanup and target-UI cleanup are managed separately. Explicit target integration takes priority only for that instance; it does not automatically determine whether independent capabilities should remain active.
 
-回调包装保留优先级、参数、原顺序与返回值；使用原函数 `RemoveCallback` 仍能移除包装。已有回调在原列表位置替换，不通过移除／重加改变顺序。方法清理只撤回仍属于该模块的修改；重连不重复安装。
+Callback wrappers preserve priority, arguments, original order, and return values. Calling the original `RemoveCallback` still removes the wrapper. Existing callbacks are replaced in their original list positions; they are not removed and re-added in a way that changes ordering. Method cleanup reverts only modifications that still belong to this module. Reconnecting does not install wrappers again.
 
-### 兼容状态与开关
+## Compatibility State and Toggles
 
-`IsaacLAN:GetAdapters()` 返回按 `id` 排序的数组，每项为下列字段，不包含原生对象：
+`IsaacLAN:GetAdapters()` returns an array sorted by `id`. Each entry has the following fields and contains no native objects:
 
-| 字段 | 含义 |
+| Field | Meaning |
 | --- | --- |
-| `id`、`adapterVersion` | 适配器 ID 与实现版本 |
-| `state`、`reason` | 当前状态和原因字符串 |
-| `authority` | 布尔值，独立能力安装是否已返回清理函数；不是“当前端是否房主”，也不表示每个动作均已启用 |
-| `target` | 匹配目标的 `{workshopId, metadataVersion, sourceHash, directory}`，尚未绑定目标时为 `nil`；不含 Mod 句柄 |
+| `id`, `adapterVersion` | Adapter ID and implementation version |
+| `state`, `reason` | Current state and reason string |
+| `authority` | Boolean indicating whether independent-capability installation returned a cleanup function. It does not mean "this side is currently the host" and does not indicate that every action has been enabled. |
+| `target` | Matched target as `{workshopId, metadataVersion, sourceHash, directory}`; `nil` until a target is bound. No Mod handle is included. |
 
-| `state` | 含义／常见原因 |
+| `state` | Meaning/common reasons |
 | --- | --- |
-| `not_detected` | 等待实际目标加载，如 `waiting_for_mod` |
-| `pending` | 身份已匹配，等待运行时导出或初始化，如 `initializing` |
-| `active` | 探测及安装完成，`installed`；不代表所有功能验收通过 |
-| `unsupported` | 名称被观察到但版本／源码不匹配、重复目标实例或运行时接口不符 |
-| `disabled` | 配置关闭、停用函数调用或目标主动接入，如 `configuration`、`unregistered`、`native_integration` |
-| `error` | 探测、安装或独立能力安装异常；完整错误见日志 |
+| `not_detected` | Waiting for the actual target to load, e.g. `waiting_for_mod` |
+| `pending` | Identity matched; waiting for runtime exports or initialization, e.g. `initializing` |
+| `active` | Probe and installation completed, `installed`; this does not mean every feature has passed acceptance testing |
+| `unsupported` | Name observed, but version/source mismatch, duplicate target instance, or runtime interface incompatibility |
+| `disabled` | Configuration disabled, disable function called, or target explicitly integrated, e.g. `configuration`, `unregistered`, `native_integration` |
+| `error` | Exception during probing, installation, or independent-capability installation; full error is in the log |
 
-未匹配版本时 `target` 可能仍为 `nil`，应结合 `state/reason` 判断，不能只看 `target` 是否存在。
+When a version is not matched, `target` may still be `nil`. Use `state/reason` to determine the result; do not rely only on whether `target` exists.
 
-独立开关通过 `IsaacLAN:SetAdapterEnabled(id, enabled)` 保存到游戏目录的 Mod 接入配置文件 `integrations.ini`，默认允许。主机要保留自己的 GoodTrip UI 并禁止所有人传送，可调用 `IsaacLAN:SetActionEnabled("isaac-lan.compat.goodtrip", "travel", false)`；该动作开关只在当前 Lua 环境生效，永久关闭内置主机能力可关闭对应兼容模块。
+Independent toggles are persisted in the game's Mod integration configuration file, `integrations.ini`, through `IsaacLAN:SetAdapterEnabled(id, enabled)`. They are enabled by default. To retain the host's own GoodTrip UI while preventing anyone from teleporting, the host can call `IsaacLAN:SetActionEnabled("isaac-lan.compat.goodtrip", "travel", false)`. This action toggle applies only to the current Lua environment. To permanently disable the built-in host capability, disable the corresponding compatibility module.
 
-`enabled` 必须是布尔值。兼容开关成功返回 `true`；未知 ID 返回 `false, "compatibility_not_registered"`，配置写入失败返回 `false, "configuration_write_failed"`，重新开启时独立能力安装失败返回 `false, "authority_install_failed"`。`true` 只表示开关操作完成，UI 是否实际装好仍需查询状态。动作开关只作用于本机注册定义；全队是否能执行由主机公布的能力决定，客机无法用自己的开关授权主机动作。
+`enabled` must be a boolean. A successful compatibility toggle returns `true`. Unknown IDs return `false, "compatibility_not_registered"`; a configuration-write failure returns `false, "configuration_write_failed"`; and a failed independent-capability installation when re-enabling returns `false, "authority_install_failed"`. `true` means only that the toggle operation completed; query the adapter state to confirm whether the UI was actually installed. An action toggle applies only to the local registration definition. Whether the party can execute it is determined by capabilities published by the host; a guest cannot authorize a host action using its own toggle.
 
-主动接入的 Mod 使用 [SDK 快速开始](https://github.com/BMingSY/isaac-lan/blob/main/docs/third-party-mod-integration.md)，不需要注册自动适配器。
+Mods that integrate explicitly should use the [SDK Quick Start](https://github.com/BMingSY/isaac-lan/blob/main/docs/third-party-mod-integration.md) and do not need to register an auto-adapter.
