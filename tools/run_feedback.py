@@ -18,7 +18,7 @@ from testing.results import finish_run
 ROOT = Path(__file__).resolve().parents[1]
 COMPLETION = "LAN_NETWORK PASS feedback"
 SUBMIT = "/isaac-lan/feedback/v1/submit"
-DESCRIPTIONS = {"实机反馈 主机": "1", "实机反馈 客机": "0"}
+DESCRIPTIONS = {"Live Feedback Host": "1", "Live Feedback Guest": "0"}
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
 RUN_LOG = re.compile(r"logs/[^/]+/\d{3}-[A-Z0-9]{8}-(?:host|client)/runtime\.log")
 
