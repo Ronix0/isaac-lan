@@ -1,41 +1,41 @@
-# 常见问题（FAQ）
+# Frequently Asked Questions (FAQ)
 
-## Q：主客机进度不一致，能一起玩吗？
+## Q: Can players with different host and guest progress play together?
 
-A：可以。局内路线和道具解锁以房主为准，选角和挑战资格按各自存档判断。
+A: Yes. The host's in-run route and item unlocks are authoritative. Character selection and challenge eligibility are checked against each player's own save.
 
-## Q：联机能解锁成就吗？
+## Q: Can multiplayer unlock achievements?
 
-A：能保留本局新增的游戏内解锁，房主开局前已有的不会补给客机。扩展不主动补发 Steam 成就。
+A: In-game unlocks earned during the current run are preserved. Unlocks the host already had before the run are not granted to guests. The extension does not actively award Steam achievements.
 
-## Q：会覆盖个人进度或单人存档吗？
+## Q: Will this overwrite personal progress or single-player saves?
 
-A：保留原有解锁，计数只合并本局变化；单人 Continue 与联机存档分开管理。
+A: Existing unlocks are preserved, and counters only merge changes from the current run. Single-player Continue data and multiplayer saves are managed separately.
 
-## Q：联机挑战会给原版挑战奖励吗？
+## Q: Do multiplayer challenges grant the rewards from the original challenges?
 
-A：不会。
+A: No.
 
-## Q：能保存续玩吗？
+## Q: Can I save and resume a multiplayer run?
 
-A：可以，需原房主、原存档栏、原人数、原加入顺序和匹配的扩展构建。临时挑战不能续玩。
+A: Yes. You must use the original host, save slot, player count, join order, and a matching extension build. Temporary challenges cannot be resumed.
 
-## Q：客机掉线能重连吗？
+## Q: Can a guest reconnect after disconnecting?
 
-A：可以。房主会话仍在时，保留原来的 `player-id.txt` 重连，恢复原角色并回到房主当前房间。
+A: Yes. As long as the host's session is still active, reconnect using the original `player-id.txt`. The guest's original character is restored, and they return to the host's current room.
 
-## Q：能中途加新人或更换房主吗？
+## Q: Can new players join mid-run, or can the host be changed?
 
-A：暂不支持。
+A: These features are not currently supported.
 
-## Q：能分开探索吗？
+## Q: Can players explore separately?
 
-A：可以同层分房探索，换层时全队一起走。
+A: Yes. Players can explore separate rooms on the same floor. The whole party moves together when changing floors.
 
-## Q：Mod 必须一样吗？
+## Q: Do all players need the same mods?
 
-A：内容 Mod 需各端一致；已适配的界面 Mod 可各自安装，见[兼容清单](https://github.com/BMingSY/isaac-lan/blob/main/docs/mod-compatibility.md)。
+A: Content mods must match across all players. Supported UI mods may be installed independently; see the [compatibility list](https://github.com/BMingSY/isaac-lan/blob/main/docs/mod-compatibility.md).
 
-## Q：连不上怎么办？
+## Q: What should I do if I cannot connect?
 
-A：全员安装同一份扩展并重启，核对房主地址、端口（默认 UDP 29506）和防火墙；跨网络还需配置端口映射或转发。
+A: Make sure everyone has installed the same extension build and restarted the game. Check the host address, port (UDP 29506 by default), and firewall settings. Connections across different networks may also require port mapping or forwarding.
