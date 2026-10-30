@@ -6,35 +6,35 @@ return function(deps)
     local pending = {}
     local service = {}
     local definitions = {
-        { enum = "ROOM_DEFAULT", name = "普通房" },
-        { enum = "ROOM_SHOP", name = "商店", aliases = { "shop", "sh" } },
-        { enum = "ROOM_ERROR", name = "错误房", aliases = { "error", "e" } },
-        { enum = "ROOM_TREASURE", name = "宝箱房", aliases = { "treasure", "t" } },
-        { enum = "ROOM_BOSS", name = "Boss房", aliases = { "boss", "b" } },
-        { enum = "ROOM_MINIBOSS", name = "小Boss房" },
-        { enum = "ROOM_SECRET", name = "一秘", aliases = { "secret", "s" } },
-        { enum = "ROOM_SUPERSECRET", name = "二秘", aliases = { "supersecret", "ss" } },
-        { enum = "ROOM_ARCADE", name = "赌博房" },
-        { enum = "ROOM_CURSE", name = "诅咒房" },
-        { enum = "ROOM_CHALLENGE", name = "挑战房" },
-        { enum = "ROOM_LIBRARY", name = "图书馆" },
-        { enum = "ROOM_SACRIFICE", name = "献祭房" },
-        { enum = "ROOM_DEVIL", name = "恶魔房", aliases = { "devil", "d" } },
-        { enum = "ROOM_ANGEL", name = "天使房", aliases = { "angel", "a" } },
-        { enum = "ROOM_DUNGEON", name = "地下室" },
+        { enum = "ROOM_DEFAULT", name = "Normal Room" },
+        { enum = "ROOM_SHOP", name = "Shop", aliases = { "shop", "sh" } },
+        { enum = "ROOM_ERROR", name = "Error Room", aliases = { "error", "e" } },
+        { enum = "ROOM_TREASURE", name = "Treasure Room", aliases = { "treasure", "t" } },
+        { enum = "ROOM_BOSS", name = "Boss Room", aliases = { "boss", "b" } },
+        { enum = "ROOM_MINIBOSS", name = "Mini-Boss Room" },
+        { enum = "ROOM_SECRET", name = "Secret Room", aliases = { "secret", "s" } },
+        { enum = "ROOM_SUPERSECRET", name = "Super Secret Room", aliases = { "supersecret", "ss" } },
+        { enum = "ROOM_ARCADE", name = "Arcade" },
+        { enum = "ROOM_CURSE", name = "Curse Room" },
+        { enum = "ROOM_CHALLENGE", name = "Challenge Room" },
+        { enum = "ROOM_LIBRARY", name = "Library" },
+        { enum = "ROOM_SACRIFICE", name = "Sacrifice Room" },
+        { enum = "ROOM_DEVIL", name = "Devil Room", aliases = { "devil", "d" } },
+        { enum = "ROOM_ANGEL", name = "Angel Room", aliases = { "angel", "a" } },
+        { enum = "ROOM_DUNGEON", name = "Basement" },
         { enum = "ROOM_BOSSRUSH", name = "Boss Rush" },
-        { enum = "ROOM_ISAACS", name = "干净卧室" },
-        { enum = "ROOM_BARREN", name = "脏卧室" },
-        { enum = "ROOM_CHEST", name = "宝库" },
-        { enum = "ROOM_DICE", name = "骰子房" },
-        { enum = "ROOM_BLACK_MARKET", name = "黑市" },
-        { enum = "ROOM_GREED_EXIT", name = "贪婪出口" },
-        { enum = "ROOM_PLANETARIUM", name = "星象房" },
-        { enum = "ROOM_TELEPORTER", name = "传送房" },
-        { enum = "ROOM_TELEPORTER_EXIT", name = "传送出口" },
-        { enum = "ROOM_SECRET_EXIT", name = "隐藏出口" },
-        { enum = "ROOM_BLUE", name = "蓝色房间" },
-        { enum = "ROOM_ULTRASECRET", name = "红隐", aliases = { "ultrasecret", "us" } },
+        { enum = "ROOM_ISAACS", name = "Isaac's Room" },
+        { enum = "ROOM_BARREN", name = "Dirty Bedroom" },
+        { enum = "ROOM_CHEST", name = "Chest Room" },
+        { enum = "ROOM_DICE", name = "Dice Room" },
+        { enum = "ROOM_BLACK_MARKET", name = "Black Market" },
+        { enum = "ROOM_GREED_EXIT", name = "Greed Exit" },
+        { enum = "ROOM_PLANETARIUM", name = "Planetarium" },
+        { enum = "ROOM_TELEPORTER", name = "Teleport Room" },
+        { enum = "ROOM_TELEPORTER_EXIT", name = "Teleport Exit" },
+        { enum = "ROOM_SECRET_EXIT", name = "Secret Exit" },
+        { enum = "ROOM_BLUE", name = "Blue Room" },
+        { enum = "ROOM_ULTRASECRET", name = "Ultra Secret Room", aliases = { "ultrasecret", "us" } },
     }
     local names, aliases = {}, {}
     for _, definition in ipairs(definitions) do
@@ -60,7 +60,7 @@ return function(deps)
         [shapes.ROOMSHAPE_LBL] = { { 0, 0 }, { 1, 0 }, { 1, 1 } },
         [shapes.ROOMSHAPE_LBR] = { { 0, 0 }, { 1, 0 }, { 0, 1 } },
     }
-    local usage = "用法：/tp r x y（右、上为正）；/tp 2p；/tp l；/tp help"
+    local usage = "Usage: /tp r x y (right/up are positive); /tp 2p; /tp l; /tp help"
     function service.parse(text)
         local args = {}
         for arg in text:lower():gmatch("%S+") do
@@ -76,7 +76,7 @@ return function(deps)
                     return { kind = "room", x = math.tointeger(x), y = math.tointeger(y) }
                 end
             end
-            return nil, "坐标无效；用法：/tp r x y（右、上为正）"
+            return nil, "Invalid coordinates. Usage: /tp r x y (right/up are positive)"
         end
         if #args ~= 1 then
             return nil, usage
@@ -97,8 +97,8 @@ return function(deps)
         return nil, usage
     end
     function service.help()
-        local lines = { usage, "起始房坐标为 (0, 0)；仅传送本层已生成的房间。" }
-        lines[#lines + 1] = "start/st：起始房；list/l：房间列表"
+        local lines = { usage, "The starting room is at (0, 0). You can only teleport to rooms generated on the current floor." }
+        lines[#lines + 1] = "start/st: Starting room; list/l: Room list"
         for _, definition in ipairs(definitions) do
             if definition.aliases then
                 lines[#lines + 1] = table.concat(definition.aliases, "/")
@@ -170,9 +170,9 @@ return function(deps)
         return list, cells
     end
     local function describe(entry, origin)
-        local name = names[entry.roomType] or "特殊房间"
+        local name = names[entry.roomType] or "Special Room"
         if entry.index < 0 then
-            return name .. "（地图外）"
+            return name .. " (off-map)"
         end
         return string.format(
             "%s (%d, %d)",
@@ -186,9 +186,9 @@ return function(deps)
         for _, entry in ipairs(list) do
             row[#row + 1] = describe(entry, origin)
                 .. (
-                    not entry.visited and " 未探索"
-                    or entry.clear and " 已清理"
-                    or " 已探索"
+                    not entry.visited and " Unexplored"
+                    or entry.clear and " Cleared"
+                    or " Explored"
                 )
             if #row == listingColumns then
                 lines[#lines + 1], row = table.concat(row, "；"), {}
@@ -228,27 +228,27 @@ return function(deps)
         end
         local info = native.api_info()
         if info.authority ~= 1 or info.ready ~= 1 or not connected(info, slot) then
-            return "传送未执行：游戏尚未就绪"
+            return "Teleport not executed: The game is not ready"
         end
         if pending[slot] then
-            return "传送尚未完成"
+            return "Teleport has not completed"
         end
         local source = playerTarget(slot)
         if not source then
-            return "传送未执行：角色不可用"
+            return "Teleport not executed: Character unavailable"
         end
         local destination, label, target
         if selection.kind == "player" then
             if selection.slot == slot then
-                return "已经在自己身边"
+                return "Already near you"
             end
             if connected(info, selection.slot) then
                 target = playerTarget(selection.slot)
             end
             if not target then
-                return "目标玩家不在线或角色不可用"
+                return "Target player is offline or their character is unavailable"
             end
-            destination, label = target, (selection.slot + 1) .. "P 身边"
+            destination, label = target, (selection.slot + 1) .. "P's location"
         else
             local result = inspect(slot, function(game)
                 local level = game:GetLevel()
@@ -266,7 +266,7 @@ return function(deps)
                         and y < mapWidth
                         and cells[y * mapWidth + x]
                     if not entry then
-                        return { text = "该坐标没有已生成的房间" }
+                        return { text = "No generated room exists at these coordinates" }
                     end
                     matches[1] = entry
                 else
@@ -278,18 +278,18 @@ return function(deps)
                 end
                 if #matches == 0 then
                     return {
-                        text = "本层尚未生成" .. (names[selection.roomType] or "该房间"),
+                        text = "This floor has no generated " .. (names[selection.roomType] or "that room"),
                     }
                 elseif #matches > 1 then
                     return {
-                        text = "存在多个目标，请用 /tp r x y 选择：\n"
+                        text = "Multiple destinations found. Use /tp r x y to choose:\n"
                             .. listing(matches, origin),
                     }
                 end
                 return { destination = matches[1], label = describe(matches[1], origin) }
             end)
             if not result then
-                return "传送未执行：角色不可用"
+                return "Teleport not executed: Character unavailable"
             end
             if result.text then
                 return result.text
@@ -298,13 +298,13 @@ return function(deps)
         end
         if sameRoom(source, destination) then
             if not target then
-                return "已在" .. label
+                return "Already at " .. label
             end
-            return placeNear(slot, target) and "已传送至 " .. label
-                or "目标附近没有可站立位置"
+            return placeNear(slot, target) and "Teleported to " .. label
+                or "There is no walkable position near the target"
         end
         if not native.rooms_teleport(slot, destination.index, destination.dimension) then
-            return "传送未执行：目标房间不可用"
+            return "Teleport not executed: The target room is unavailable"
         end
         pending[slot] = {
             run = info.runId,
@@ -324,7 +324,7 @@ return function(deps)
             and connected(info, task.targetSlot)
             and playerTarget(task.targetSlot)
         if not position or position.identity ~= task.source.identity then
-            return "传送已取消：角色已变化"
+            return "Teleport cancelled: The character has changed"
         elseif
             task.targetSlot
             and (
@@ -333,14 +333,14 @@ return function(deps)
                 or not sameRoom(target, task.destination)
             )
         then
-            return "传送已取消：目标玩家已离开"
+            return "Teleport cancelled: The target player has left"
         elseif sameRoom(position, task.destination) then
-            return (not target or placeNear(slot, target)) and "已传送至 " .. task.label
-                or "已到达目标房间，但没有可站立位置"
+            return (not target or placeNear(slot, target)) and "Teleported to " .. task.label
+                or "Reached the target room, but there is no walkable position"
         elseif not sameRoom(position, task.source) then
-            return "传送已取消：所在房间已变化"
+            return "Teleport cancelled: The current room has changed"
         elseif info.nowMs - task.started >= arrivalTimeout then
-            return "传送未完成，请重试"
+            return "Teleport did not complete. Please try again."
         end
     end
     function service.step()
@@ -352,15 +352,15 @@ return function(deps)
             local message
             if info.authority ~= 1 or info.runId ~= task.run or info.worldEpoch ~= task.epoch then
                 pending[slot] = nil
-                message = "传送已取消：局次或楼层已变化"
+                message = "Teleport cancelled: The run or floor has changed"
             elseif info.ready ~= 1 or not connected(info, slot) then
                 cancel(slot, task)
-                message = "传送已取消：角色不可用"
+                message = "Teleport cancelled: Character unavailable"
             else
                 local ok, result = pcall(arrival, slot, task, info)
                 message = ok and result or nil
                 if not ok then
-                    message = "传送已取消：无法读取角色或房间状态"
+                    message = "Teleport cancelled: Could not read character or room state"
                 end
                 if message then
                     cancel(slot, task)
