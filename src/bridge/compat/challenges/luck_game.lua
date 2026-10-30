@@ -108,15 +108,15 @@ return function(deps)
         output(
             winner.slot,
             label(loser.slot)
-                .. "【"
+                .. " ["
                 .. score(loser)
-                .. "】将 "
+                .. " ] gave "
                 .. itemName(item.id)
-                .. " 交给了 "
+                .. " to "
                 .. label(winner.slot)
-                .. "【"
+                .. " ["
                 .. score(winner)
-                .. "】！"
+                .. " ]!"
         )
     end
     local function clearAward()
