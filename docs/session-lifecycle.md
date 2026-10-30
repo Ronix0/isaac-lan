@@ -1,122 +1,122 @@
-# 会话与状态恢复
+# Session and State Recovery
 
-运行协调器管理启动、楼层事务、保存与退出；网络负责有序交付，游戏后端负责原生加载和对象所有权。网络已连接、桥接已准备和原生世界可应用是不同边界。
+The runtime coordinator manages startup, floor transactions, saves, and exit. The network layer provides ordered delivery; the game backend owns native loading and object lifetimes. Network connected, bridge ready, and native world ready for application are separate boundaries.
 
-## 大厅与开局
+## Lobby and Starting a Run
 
-客机握手携带协议版本、扩展指纹、玩家标识和 Mod 指纹。协议与扩展必须匹配，Mod 差异只提示。房主发布种子、难度、角色顺序和运行规则；每名玩家的角色资格来自自己的存档。规则变化会清空准备状态，旧规则代次的准备请求无效。
+The guest handshake carries the protocol version, extension fingerprint, player identity, and Mod fingerprint. Protocol and extension versions must match; Mod differences are warnings only. The host publishes the seed, difficulty, character order, and run rules. Each player's character eligibility comes from that player's own save. Changing rules clears ready states, and ready requests from an older rule generation are invalid.
 
-房间选项是运行规则中的独立位集合，大厅显示单行摘要，由房主进入规则子菜单修改；客机可查看只读列表。每次勾选即时同步，不依赖退出菜单提交。具体含义由[房间规则](https://github.com/BMingSY/isaac-lan/blob/main/docs/room-rules.md)组件解释，网络只携带位集合。继续上次联机时使用存档规则；与大厅不一致时先载入规则并重新准备。规则随启动、保存、重连和重开保留。
+Room options are an independent bit set within the run rules. The lobby displays a one-line summary. The host can edit options in a rules submenu; guests can view the list read-only. Each toggle is synchronized immediately and does not wait for the menu to close. The [Room Rules](https://github.com/BMingSY/isaac-lan/blob/main/docs/room-rules.md) component defines their meaning; the network carries only the bit set. Continuing a previous multiplayer run uses the saved rules. If they differ from the lobby, load the saved rules and ready up again. Rules persist through startup, saving, reconnecting, and restarting.
 
-角色卡的通关标记由每名玩家从个人进度生成，随选角资料提交并由房主转发；初次进入大厅也发布当前角色的预览。单独的预览刷新携带规则代次和角色 ID，只能更新发送者当前角色，不改变准备状态。已过期或开局后到达的预览被忽略。共享的游戏内进度不替代大厅的个人记录，卡片只显示未完成、普通、困难三态。
+Character-card completion marks are generated from each player's personal progress, submitted with the character selection, and forwarded by the host. The current character preview is also published when first entering the lobby. A standalone preview refresh carries the rule generation and character ID; it can update only the sender's current character and does not change ready state. Expired previews and previews arriving after the run starts are ignored. Shared in-game progress does not replace the lobby's personal records. Cards show only three states: incomplete, normal, or hard.
 
 ```mermaid
 sequenceDiagram
-    participant C as 客机
-    participant H as 房主
-    C->>H: hello：版本、身份与指纹
-    H->>C: welcome / lobby：栏位与大厅
-    C->>H: choice：选角与准备
-    H->>C: start：设置与可选检查点
-    C->>C: 原生开局／Continue，绑定角色与房间
-    C->>H: ready：引擎就绪
-    H->>H: 初始玩家就绪后推进
-    loop 游戏中
-        C->>H: 输入与请求
-        H->>C: 本机房间视图
-        C->>H: applied：应用完成
+    participant C as Guest
+    participant H as Host
+    C->>H: hello: version, identity, and fingerprints
+    H->>C: welcome / lobby: slots and lobby state
+    C->>H: choice: character and ready state
+    H->>C: start: settings and optional checkpoint
+    C->>C: Native start / Continue; bind characters and rooms
+    C->>H: ready: engine initialized
+    H->>H: Advance after initial players are ready
+    loop During gameplay
+        C->>H: Input and requests
+        H->>C: Local-room view
+        C->>H: applied: restoration completed
     end
 ```
 
-[`bridge/runtime/session.lua`](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/runtime/session.lua) 管理 `idle → starting → initializing → preparing → ready`。原生虚拟控制器就绪后，同一准备代次只请求一次启动。[角色绑定组件](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/runtime/party.lua) 校验每个槽位的独立角色及控制器归属；角色创建、启用房间、建立同步门和恢复房间均在 `preparing` 内执行，嵌套回调不能重复创建角色。Continue 在首次原生输入更新前先经过一次受保护的角色绑定，按存档顺序恢复槽位，不用物理控制器 ID 推断归属。关闭使代次失效，过期回调不能继续推进。准备错误通知运行协调器结束当前游戏，不逐帧重试半完成操作，前端仍可处理重连和离开。
+[`bridge/runtime/session.lua`](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/runtime/session.lua) manages `idle → starting → initializing → preparing → ready`. Once the native virtual controller is ready, each startup generation issues only one start request. The [character-binding component](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/runtime/party.lua) validates each slot's independent character and controller ownership. Character creation, room activation, synchronization barriers, and room restoration all run during `preparing`; nested callbacks cannot create characters twice. Before the first native input update, Continue passes through a protected character-binding step and restores slots in save order rather than inferring ownership from physical controller IDs. Shutdown invalidates the generation, so stale callbacks cannot advance it. A preparation error tells the runtime coordinator to end the current game instead of retrying a partially completed operation every frame. The front end can still handle reconnecting or leaving.
 
-网络 `loading` 只表示检查点尚未传完，传完仍需原生加载与引擎就绪。初始开局等待所有初始玩家，每个加载请求最多等待 60 秒；运行中的重连加载不阻塞已在线玩家。
+Network `loading` means only that checkpoint transfer is incomplete. After transfer, native loading and engine readiness are still required. Initial startup waits for all initial players; each loading request has a maximum wait of 60 seconds. Reconnecting during a run does not block players who are already online.
 
-启动请求尚未交给原生引擎时发生错误，不会产生游戏退出回调。运行协调器立即恢复单人存档保护并丢弃未完成的检查点，通知桥接释放启动代次；客机保留失败会话的身份，可重试或离开。原生游戏已经启动时，清理仍等待实际退出完成。
+If an error occurs before a startup request is handed to the native engine, no game-exit callback will occur. The runtime coordinator immediately restores single-player save protection, discards the incomplete checkpoint, and tells the bridge to release the startup generation. The guest retains the failed session identity and can retry or leave. If the native game has already started, cleanup still waits for actual exit completion.
 
-## 原生换层与重建
+## Native Floor Transitions and Rebuilds
 
-房主发起原生换层时发布可靠 `Stage` 事务，携带来源楼层、类型、动画、种子、路线标记、来源房间和新 `floorEpoch`。各端按同一来源上下文执行原生选路，房主的选择不由客机当前视口推导。
+When the host starts a native floor transition, it publishes a reliable `Stage` transaction containing the source floor, type, animation, seed, route marker, source room, and new `floorEpoch`. Each client executes native route selection using the same source context; the host's choice is not inferred from the guest's current viewport.
 
-事务按以下顺序执行：
+The transaction runs in this order:
 
-1. 接受新代次，拒绝重复或过期事务。
-2. 清理旧视图、增量基线、预测与实体映射。
-3. 执行原生过场、换层或重建。
-4. 楼层准备完成后重新接入房间上下文，应用新代次视图。
+1. Accept the new generation and reject duplicate or expired transactions.
+2. Clear old views, delta baselines, prediction, and entity mappings.
+3. Execute the native transition animation, floor change, or rebuild.
+4. After floor preparation, re-enter the room context and apply the new-generation view.
 
-普通在线换层不通过完整 Continue 重建。当前层重置与 R Key 道具同步原生种子及布局；跑圈由房主确认后执行原生流程。特殊路线由兼容组件提供策略，不在网络层识别路线。原生来源上下文与转场能力见[后端参考](https://github.com/BMingSY/isaac-lan/blob/main/docs/native-backend.md#转场与暂停)。
+Ordinary online floor transitions do not rebuild through a full Continue. Same-floor reset and the R Key item synchronize the native seed and layout; the host confirms a victory lap before running the native flow. Special routes provide strategies through compatibility components; the network layer does not identify routes. See the [backend reference](https://github.com/BMingSY/isaac-lan/blob/main/docs/native-backend.md#transitions-and-pause) for native source context and transition capabilities.
 
-## 暂停与退出
+## Pause and Exit
 
-任何在线玩家可发起全队暂停，由发起者恢复；发起者离队后由房主恢复。视图同步暂停状态和发起者，菜单页、光标、Items 与 Options 由各端本机输入操作。
+Any online player can initiate a party-wide pause; the initiator resumes it. If the initiator leaves, the host resumes. Views synchronize the paused state and initiator. Each client handles menu pages, cursor, Items, and Options through local input.
 
-恢复和房主保存退出转换为可靠会话命令。客机菜单离开主动关闭连接，由房主按离线生命周期停放角色。暂停菜单不向房主提交方向或确认动作；暂停期间保留射击持有值。Options 关闭前保存本机配置，Switch Controller 不允许改写联机控制器绑定。
+Resume and host save-and-exit are reliable session commands. A guest leaving from the menu closes its connection voluntarily; the host parks the character according to the offline lifecycle. The pause menu does not send directional or confirm actions to the host. Held shooting input is retained while paused. Options are saved to local configuration before closing, and Switch Controller cannot rewrite multiplayer controller bindings.
 
-只有房主可以保存并结束会话。客机单独离开时停放其角色，保留主要状态；离线角色不参与战斗和奖励人数计算。退出、换层和迁移均在安全更新边界执行，单人存档及进度保护持续到原生退出完成。退出尾部合并并保存个人进度，再交还菜单，保证下一局读取合并后的计数。
+Only the host can save and end the session. When a guest leaves alone, its character is parked and its main state is retained. Offline characters do not count toward combat or reward-player totals. Exit, floor transition, and migration execute at safe update boundaries. Single-player save and progress protection remains active until native exit completes. At the end of exit, personal progress is merged and saved before returning to the menu, so the next run reads the merged counters.
 
-全队死亡与通关均由房主的原生结束流程确认，通过可靠结束事件通知客机。生命归零、狂暴中的延迟死亡和可复活状态本身不触发结算。客机收到事件后停止应用玩法快照，进入原版死亡结算或结局流程；相同结束事件只应用一次，随后到达的关闭消息不丢弃待播放的结算。死亡不计为挑战完成。
+Party death and victory are confirmed by the host's native ending flow and sent to guests through a reliable end event. Reaching zero health, delayed death during a transformation, and a revivable state do not themselves trigger settlement. After receiving the event, a guest stops applying gameplay snapshots and enters the original death-settlement or ending flow. The same end event is applied only once; a later close message does not discard a pending ending animation. Death does not count as challenge completion.
 
-通关后保留联机房间，各端继续播放本机结局；结局结束且原生菜单重建后自动显示联机界面。房主收齐在线成员的原生退出回执后回到选人、准备状态，仍有成员未完成退出清理时显示等待状态。断线成员不阻塞返回，剩余成员的身份和连接保留，空栏位收拢。选角与运行规则保留，准备状态清空；每名玩家回到界面后重新准备，再由房主开始下一局。新局使用新的运行标识并重新建立引擎就绪屏障，不继承上一局的输入、快照或背包；个人存档保护持续到原生退出尾部。
+After victory, the multiplayer room is retained while each client plays its own ending. Once the ending finishes and the native menu is rebuilt, the multiplayer interface appears automatically. The host returns to character selection and ready state after receiving native exit receipts from all online members. If a member has not completed exit cleanup, the interface shows a waiting state. Disconnected members do not block the return; remaining members retain their identities and connections, and empty slots are compacted. Character selections and run rules are retained, but ready states are cleared. Each player readies again after returning to the interface, then the host can start the next run. A new run uses a new run identity and rebuilds the engine-readiness barrier; input, snapshots, and inventory from the previous run are not inherited. Personal save protection remains active through the native exit tail.
 
-## 全队重新开局
+## Party Restart
 
-结算画面的重开按钮、游戏内长按 R 和原版手柄重开组合键提交本人的同意。运行层通过独立的可靠生命周期通道收集投票，屏幕下方显示原版 R Key 道具图标、分段外环及同意人数；每位玩家对应一段外环，同意后点亮；不打开新页面，也不因一人投票暂停玩法。全体在线成员同意后，由房主生成新种子，保留连接、玩家身份、栏位、开局角色、难度与挑战规则，清空本局道具和进度后共同开局。
+The restart button on the results screen, holding R in-game, and the original controller restart combination submit each player's consent. The runtime collects votes through a separate reliable lifecycle channel. At the bottom of the screen, the original R Key item icon, segmented outer ring, and consent count are displayed. Each player corresponds to one ring segment; it lights up after consent. No new page opens, and one player's vote does not pause gameplay. Once every online member agrees, the host generates a new seed, retains connections, player identities, slots, starting characters, difficulty, and challenge rules, clears this run's items and progress, and starts the party together.
 
-投票属于当前运行标识及投票代次，重复同意不增加票数。20 秒未达成一致或在线名单变化会清空本轮投票，旧代次消息不能重新计票。正在传输归队检查点时暂不提交重开事务，新的在线成员加入后需重新确认。
+Votes belong to the current run identity and vote generation. Repeated consent does not add another vote. If the group does not reach agreement within 20 seconds or the online roster changes, the current vote round is cleared. Messages from an old generation cannot be counted again. A restart transaction is temporarily deferred while a reconnect checkpoint is being transferred; a newly joined online member must confirm again.
 
-重开事务先推进世界代次并清理输入、结束事件、快照及增量基线，再在各端安全边界退出旧局。原生退出尾部完成个人存档及进度恢复后，桥接重新经过完整启动流程；连接与栏位保持，原生对象由游戏销毁及重建。引擎就绪回执包含运行标识，旧局回执不能解除新局屏障；房主等待新局在线玩家准备完成后推进模拟。R Key 道具仍使用换层兼容流程。
+The restart transaction first advances the world generation and clears input, end events, snapshots, and delta baselines. Each client then exits the old run at a safe boundary. After the native exit tail completes personal-save and progress restoration, the bridge repeats the full startup flow. Connections and slots remain, while the game destroys and rebuilds native objects. Engine-ready acknowledgements include the run identity, so an acknowledgement from the old run cannot release the new-run barrier. The host advances simulation after the new run's online players are ready. The R Key item still uses the floor-transition compatibility flow.
 
-## 当前层重连
+## Reconnecting on the Current Floor
 
 ```mermaid
 sequenceDiagram
-    participant C as 客机
-    participant H as 房主
-    H->>H: 停放断线角色，继续游戏
-    C->>H: 以原玩家标识重连
-    H->>H: 安全边界采集当前层检查点
-    H->>H: 后台压缩并校验独立存档字节
-    H->>C: start + 压缩 snapshot 分块
-    C->>C: 后台校验及解压
-    C->>H: loaded：完整接收并还原
-    C->>C: 原生 Continue，准备角色和房间
-    C->>H: ready：引擎就绪
-    H->>H: 激活保留角色，放入房主房间
-    H->>C: 最新楼层事务与实时视图
+    participant C as Guest
+    participant H as Host
+    H->>H: Park disconnected character and continue
+    C->>H: Reconnect with original player identity
+    H->>H: Capture current-floor checkpoint at a safe boundary
+    H->>H: Compress and validate independent save bytes in background
+    H->>C: start + compressed snapshot chunks
+    C->>C: Validate and decompress in background
+    C->>H: loaded: fully received and restored
+    C->>C: Native Continue; prepare character and room
+    C->>H: ready: engine initialized
+    H->>H: Activate retained character in host's room
+    H->>C: Latest floor transaction and real-time view
 ```
 
-运行中的原角色由 `player-id.txt` 标识。检查点在所有已加载房间保存后采集，临时将停放角色纳入序列化名单，不让其参与战斗。客机准备完成前不提交有效玩法输入，也不计入在线人数。
+The original character during a run is identified by `player-id.txt`. The checkpoint is captured after all loaded rooms have been saved, temporarily including the parked character in the serialization list without allowing it to participate in combat. Until the guest is ready, it cannot submit valid gameplay input and does not count toward the online-player total.
 
-检查点完整压缩传输，不以客机旧存档作为增量基线。压缩结果不可变，同一次检查点可由多个待恢复客机共享；原生状态的采集与恢复不在后台线程调用。压缩／解压结果完成前不越过对应启动或楼层屏障，取消或替换事务后丢弃旧结果。
+The complete checkpoint is compressed and transferred; the guest's old save is not used as a delta baseline. The compressed result is immutable and can be shared by multiple guests waiting to reconnect. Native-state capture and restoration never run on background threads. Startup or floor barriers are not released until compression/decompression completes. Results from cancelled or replaced transactions are discarded.
 
-加载期间房主继续推进，连接保留最新楼层事务；客机就绪后先处理事务，再接收实时视图。等待与加载界面使用房主提供的本局角色名单。
+The host continues simulation during loading and retains the latest floor transaction for the connection. Once the guest is ready, it processes that transaction before receiving real-time views. Waiting and loading screens use the party's character list supplied by the host.
 
-客机菜单提供“重连游戏”和“离开游戏”。主动重连先释放旧连接，在原生退出结束后使用原地址、端口及玩家标识重新连接；意外掉线自动尝试一次。恢复状态跨原生退出保留，首个实时视图成功应用后结束，菜单收起并释放输入。连接或恢复失败时保留重试入口，不自动循环重建失败的角色状态。离开取消待执行的重连并清理会话。
+The guest menu offers **Reconnect to Game** and **Leave Game**. A manual reconnect first releases the old connection, waits for native exit to finish, then reconnects using the original address, port, and player identity. An unexpected disconnect automatically tries once. Recovery state is retained across native exit and ends after the first real-time view is applied successfully; the menu closes and input is released. If connection or recovery fails, the retry entry remains available; failed character state is not rebuilt in an automatic loop. Leaving cancels pending reconnect work and cleans up the session.
 
-检查点使用原版保存／续玩语义，道具和血量等主要状态恢复，临时实体和部分计时可能重建。系统不支持中途增加新玩家或迁移房主。
+The checkpoint uses original save/continue semantics. Main state such as items and health is restored, while temporary entities and some timers may be rebuilt. Adding new players mid-run and migrating the host are not supported.
 
-## 联机存档与续玩
+## Multiplayer Saves and Continue
 
-[`session_archive.h`](https://github.com/BMingSY/isaac-lan/blob/main/src/runtime/session_archive.h) 定义存档封装：扩展指纹、开局设置、运行规则、全队位置、原生 GameState 和完整性哈希。`IsaacLAN/save/4` 保存房间选项；读取也支持没有选项字段的 `save/3`，缺失时默认关闭。读取须匹配格式与指纹，完整文件上限 8 MiB。
+[`session_archive.h`](https://github.com/BMingSY/isaac-lan/blob/main/src/runtime/session_archive.h) defines the save container: extension fingerprint, startup settings, run rules, party positions, native GameState, and integrity hash. `IsaacLAN/save/4` stores room options; reading also supports `save/3`, which has no options field and defaults all options to off. The format and fingerprint must match. The complete file is limited to 8 MiB.
 
-房主三个存档栏分别使用 `session-1.bin`、`session-2.bin`、`session-3.bin`，与单人 Continue 分开管理。写入采用临时文件替换；失败时保留旧文件和进程内待保存快照，重试固定使用原存档栏，成功前不能开始新联机局。
+The host's three save slots use `session-1.bin`, `session-2.bin`, and `session-3.bin`, managed separately from single-player Continue. Writes use temporary-file replacement. On failure, the old file and in-memory pending snapshot are retained. Retries always use the original save slot, and a new multiplayer run cannot start until the save succeeds.
 
-整场关闭后的续玩要求原房主、原存档栏、原人数和原加入顺序。运行中重连按玩家标识恢复，与整场续玩的栏位条件分别校验。临时挑战不覆盖已有联机存档，只支持运行中重连，详见[联机挑战](https://github.com/BMingSY/isaac-lan/blob/main/docs/lan-challenges.md)。
+Continuing after the entire session has closed requires the original host, original save slot, original player count, and original join order. Reconnecting during a run is validated separately by player identity and does not use the full-session Continue slot requirements. Temporary challenges do not overwrite existing multiplayer saves and support only reconnecting during the run; see [Multiplayer Challenges](https://github.com/BMingSY/isaac-lan/blob/main/docs/lan-challenges.md).
 
-## 全队回退
+## Party Rewind
 
-发光沙漏为每个控制器保存上一次进房时的全队原生状态与位置。房主在使用者源房间执行原版路线判定，通过可靠事务发送结果；客机回放该结果，不自行重新选路。
+The Glowing Hourglass stores a full native party checkpoint and positions for each controller when that player enters a room. The host performs the original route decision in the user's source room and sends the result through a reliable transaction; guests replay that result rather than selecting a route again locally.
 
-原生选择回退时恢复检查点与全队位置；选择 Home 或其他房间转场时保留对应原生行为，不强行恢复旧位置。无检查点时只允许符合原版条件的转场。回退可以跨层，状态序号继续递增，世界代次推进，回退前的视图不得再次应用。
+When the native choice is rewind, the checkpoint and party positions are restored. When the choice is Home or another room transition, the corresponding original behavior is retained and old positions are not forcibly restored. Without a checkpoint, only transitions allowed by the original rules are available. Rewind may cross floors. State sequence numbers continue increasing, the world generation advances, and views from before the rewind cannot be applied again.
 
-## 失败边界
+## Failure Boundaries
 
-| 失败位置 | 处理 |
+| Failure point | Handling |
 | --- | --- |
-| 单个客机协议错误或连接超时 | 房主移除该连接并继续运行 |
-| 客机状态应用或桥接错误 | 客机结束当前游戏、返回大厅；原会话和身份有效时可重连 |
-| 房主桥接或原生适配错误 | 会话级失败，可能结束整场游戏 |
-| 联机存档写入失败 | 保留旧文件与待保存快照，等待重试 |
+| One guest has a protocol error or connection timeout | The host removes that connection and continues the run. |
+| Guest state application or bridge error | The guest ends the current game and returns to the lobby; it can reconnect if the original session and identity remain valid. |
+| Host bridge or native-adapter error | Session-level failure; the entire game may end. |
+| Multiplayer save write failure | Retain the old file and pending snapshot, then wait for a retry. |
 
-完整性哈希用于传输和存档校验，不比较双方随机序列。原生状态应用不具备事务回滚，失败不能通过提交完成回执掩盖。
+Integrity hashes validate transfer and saves; they do not compare the two sides' random sequences. Native-state application has no transactional rollback, and a failure cannot be hidden by sending a completion acknowledgement.
