@@ -110,7 +110,7 @@ return function(deps)
                 pending[#pending + 1] = item
             else
                 local name = itemName(item.id)
-                output(item.owner, label(item.owner) .. " 拾取到了野生的 " .. name .. "！")
+                output(item.owner, label(item.owner) .. " found a wild " .. name .. "!")
                 local winner = roll(seats, luck)
                 give(
                     winner,
@@ -121,11 +121,11 @@ return function(deps)
                 output(
                     winner.slot,
                     label(winner.slot)
-                        .. "【"
+                        .. " ["
                         .. (luck and score(winner) or number(winner.roll))
-                        .. "】获得了道具 "
+                        .. " ] obtained "
                         .. name
-                        .. "！"
+                        .. "!"
                 )
             end
         end
