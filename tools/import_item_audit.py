@@ -243,26 +243,26 @@ def import_run(findings, directory):
             item["status"] = item_status(case.get("item", f"{case['kind']}:{case['id']}"), current)
             if item["status"] == "crash":
                 item["impact"] = (
-                    "实机扫描触发访问异常／进程崩溃；具体持有者、房间条件见该项验证记录。尚未修复。"
+                    "A live scan triggered an access violation or process crash; see this item's verification record for the exact holder and room conditions. Not fixed yet."
                 )
             elif item["status"] == "problem":
                 categories = {
                     problem["category"] for entry in current for problem in entry["problems"]
                 }
                 labels = {
-                    "no_effect": "未观察到应有的直接属性效果",
-                    "non_native": "双端属性／背包不同或客机重复执行效果",
-                    "reconnect": "客机断开／重连",
-                    "incomplete": "场景未按时完成",
+                    "no_effect": "Expected direct stat effect was not observed",
+                    "non_native": "Host/guest stats or inventory differ, or the guest applies the effect more than once",
+                    "reconnect": "Guest disconnect/reconnect",
+                    "incomplete": "Scene did not complete in time",
                 }
                 item["impact"] = (
                     "；".join(labels.get(category, category) for category in sorted(categories))
-                    + "，需专项确认归因。"
+                    + ", attribution requires targeted verification."
                 )
             elif item["status"] == "incomplete":
-                item["impact"] = "效果证据不完整。"
+                item["impact"] = "Effect evidence is incomplete."
             elif item["status"] == "untested":
-                item["impact"] = "现有记录因夹具问题排除；效果需要重新验证。"
+                item["impact"] = "Existing record excluded due to a fixture issue; the effect needs to be reverified."
             else:
                 item.pop("impact", None)
     return findings
