@@ -1,100 +1,112 @@
-# 分房模拟与本机显示
+# Separate-Room Simulation and Local Presentation
 
-房主在同一线程内依次推进各个有人活动的房间；客机显示本机角色所在房间。玩法上下文与显示上下文分别管理，显示名单不改变控制器身份或存档顺序。
+The host advances every room with active players in sequence on the same thread. A guest displays the room containing its local character. Gameplay and presentation contexts are managed separately; the display list does not change controller identity or save order.
 
-## 房间上下文与所有权
+## Room Context and Ownership
 
-原生游戏使用进程级当前房间。分房后，以 `(dimension, roomIndex)` 标识房间，通过 [J460 Room Scope](https://github.com/BMingSY/isaac-lan/blob/main/src/engine/versions/j460/rooms.cpp) 临时切换房间、玩家名单、渲染资源和音频上下文，退出时恢复外层上下文。
+The native game uses a process-wide current room. With separate-room simulation, a room is identified by `(dimension, roomIndex)`. [J460 Room Scope](https://github.com/BMingSY/isaac-lan/blob/main/src/engine/versions/j460/rooms.cpp) temporarily switches the room, player list, render resources, and audio context, then restores the outer context on exit.
 
-- 房主更新所有有在线玩家的房间；最后一名玩家离开后，通过原生 `RoomDescriptor` 保存并卸载，再次进入走原生初始化。
-- 单个房间因进场演出等待而暂停时，其房龄也暂停；其他房间继续推进。首次恢复更新仍保留原生首帧语义，重复更新同一游戏帧不会重复补偿计时。
-- 房间渲染缓冲区随上下文交换完整引用所有权。原生容器、精灵和镜头由游戏管理，不能交给不兼容的 C++ 运行库析构。
-- 角色形态变化可能替换身体或名单；作用域退出时合并原生变化，调用方不得继续使用失效引用。
-- 客机只加载本机房间的背景与实体。异房队友使用不运行玩法的存储壳，保留全队状态和多人 HUD。
+- The host updates every room with online players. After the last player leaves, the room is saved and unloaded through the native `RoomDescriptor`; entering it again follows native initialization.
+- When a room is paused for an entrance animation, its room age is paused too; other rooms continue advancing. The first update after resuming retains native first-frame semantics. Repeated updates in the same game frame do not apply the time compensation more than once.
+- A room's render buffer transfers complete reference ownership with the context. The game owns native containers, sprites, and cameras; they must not be destroyed by an incompatible C++ runtime.
+- A character transformation may replace a body or the player list. On scope exit, native changes are merged. Callers must not keep using invalidated references.
+- A guest loads only the background and entities for its local room. Teammates in other rooms use non-simulating storage shells that retain party state and multiplayer HUD data.
 
-嵌套作用域及退栈顺序见[分层与所有权](https://github.com/BMingSY/isaac-lan/blob/main/docs/layers-and-compatibility.md#房间作用域)。
+Nested scopes and stack-unwinding order are described in [Layers and Ownership](https://github.com/BMingSY/isaac-lan/blob/main/docs/layers-and-compatibility.md#room-scope).
 
-## 迁移与汇合
+## Transitions and Regrouping
 
-1. 原生过门或传送产生目标请求，由房主验证来源、目的地和玩法权限。
-2. 当前作用域退出后，在安全更新边界执行角色离房清理。需要原生选路时，先取得最终目的地和入口，再登记房间归属并迁移角色与随行实体。
-3. 最终目标未加载时继续原生初始化；已有玩家时保留房间实体，只执行新进入者的进房效果。原生的大房间子格索引通过描述符归一为联机房间标识，原生入口上下文仍保留。房间作用域在同一事务内切到最终目标，维持玩家名单和外层恢复边界。
-4. 按原生入口放置角色，恢复前景上下文并卸载空房间。
+1. A native door or teleport produces a destination request. The host validates the source, destination, and gameplay permissions.
+2. After the current scope exits, character departure cleanup runs at a safe update boundary. If native route selection is needed, the final destination and entrance are resolved first; room ownership is then registered and the character and attached entities are moved.
+3. If the final destination is not loaded, native initialization continues. If players are already there, existing room entities are retained and only the entering player's room-entry effects run. Native large-room sub-grid indices are normalized through the descriptor into a multiplayer room identity, while the original entrance context is retained. The room scope switches to the final destination within the same transaction, preserving the player list and outer restoration boundary.
+4. Place the character at the native entrance, restore the foreground context, and unload empty rooms.
 
-额外进门无敌仅用于进入队友正在战斗的房间。全队汇合与特殊路线由兼容策略选择，房间运行组件负责执行。客机门状态包含槽位、目标、类型、锁状态与精灵，目的地由权威状态决定。
+Extra door-entry invulnerability applies only when entering a room where a teammate is already fighting. Party regrouping and special routes are selected by compatibility strategies; the room runtime component performs the transition. Guest door state includes the slot, destination, type, lock state, and sprite. The destination comes from authoritative state.
 
-楼层诅咒由主机统一维护。混乱诅咒的随机改送和入口选择复用原生换房流程，每次请求只判定一次；客机回放、存档位置恢复、幽灵跟随及全队汇合使用已确定的目的地，跳过再次选路并保留共享诅咒状态。原生房间内容交换仅作用于没有活动实例或离线保留实例的房间，避免替换队友的实体与房间描述。接入边界见[原生转场能力](https://github.com/BMingSY/isaac-lan/blob/main/docs/native-backend.md#转场与暂停)。
+Floor curses are maintained by the host. Curse of the Maze redirection and entrance selection reuse the native room-transition flow and are evaluated once per request. Guest replay, save-position restoration, ghost following, and party regrouping use the already determined destination; they skip route selection again and preserve the shared curse state. Original room-content swapping applies only to rooms without an active instance or an offline retained instance, preventing replacement of a teammate's entities or room descriptor. See [Native Transition Capabilities](https://github.com/BMingSY/isaac-lan/blob/main/docs/native-backend.md#transitions-and-pause) for integration boundaries.
 
-## 本机视图与 HUD
+## Local View and HUD
 
-多人 LAN 会话中的角色沿用原版联机描边，颜色固定对应 P1 红、P2 蓝、P3 黄、P4 绿。颜色跟随控制器所属玩家，不随本机 HUD 排序、角色身体替换或分房变化；同一玩家的双角色共用颜色。描边随原生身体、头部与装扮绘制，保留可见性、受击闪烁和正常染色，不额外显示编号。表现策略见 [player_outlines.h](https://github.com/BMingSY/isaac-lan/blob/main/src/presentation/player_outlines.h)，绘制边界见[原生轮廓能力](https://github.com/BMingSY/isaac-lan/blob/main/docs/native-backend.md#玩家轮廓)。
+Characters in multiplayer LAN sessions use the original multiplayer outline. Colors are fixed by player: P1 red, P2 blue, P3 yellow, and P4 green. A color follows the controller's player identity, not local HUD ordering, body replacement, or room changes. Two bodies belonging to the same player share a color. Outlines are drawn with the native body, head, and costume, retaining visibility, damage flicker, and normal tinting. No extra player number is shown. The presentation strategy is in [player_outlines.h](https://github.com/BMingSY/isaac-lan/blob/main/src/presentation/player_outlines.h); drawing boundaries are in [Native Outline Capability](https://github.com/BMingSY/isaac-lan/blob/main/docs/native-backend.md#player-outlines).
 
-`withView` 临时切到本机房间，并将本机控制器角色置于显示名单前部。换层中尚无有效房间时，仍保留本机 HUD 归属；绘制结束恢复原名单。客机接受普通下降楼层事件后，为本机存活角色启动原生跳入动画，再交由原生换层流程推进；同层重置、上行与兼容组件接管的转场保留各自演出。
+`withView` temporarily switches to the local room and places the local controller's character near the front of the display list. During a floor transition, when no valid room exists yet, local HUD ownership is still retained. The original list is restored after drawing. After a guest accepts an ordinary downward-floor event, the native jump animation starts for its living local character, then the native floor-transition flow advances. Same-floor resets, upward transitions, and transitions owned by compatibility components retain their own animations.
 
-| 内容 | 归属 |
+| Content | Ownership |
 | --- | --- |
-| 背景、镜头和地图焦点 | 本机角色所在房间 |
-| 血量、卡牌、主动栏 | 原版多人 HUD，以控制器匹配角色 |
-| 属性栏、道具列表、拾取提示 | 本机控制器角色 |
-| Ping | 对应在线客机的 HUD，数值来自房主测得的 RTT；未知显示 `—`，房主自身不显示 |
-| 地图与 Mod 界面操作 | 本机物理输入 |
+| Background, camera, and map focus | Room containing the local character |
+| Health, cards, and active-item slots | Original multiplayer HUD, matching characters by controller |
+| Stat panel, item list, and pickup notifications | Local controller's character |
+| Ping | HUD for the corresponding online guest, using RTT measured by the host; unknown is shown as `—`; the host does not display its own ping |
+| Map and Mod interface input | Local physical input |
 
-HUD 坐标由具名后端读取，Lua 表现组件只接收身份与位置，不持有原生对象。能力边界见[原生能力参考](https://github.com/BMingSY/isaac-lan/blob/main/docs/native-backend.md#hud-与本机输入)。
+HUD coordinates are read through named backend capabilities. Lua presentation components receive only identity and position; they do not hold native objects. See [Native Capability Reference](https://github.com/BMingSY/isaac-lan/blob/main/docs/native-backend.md#hud-and-local-input) for the boundary.
 
-角色聊天气泡在房间画面之后绘制；世界位置转换到屏幕后，按本机房间的镜像状态反射横坐标，文字和表情保持正向。
+Character chat bubbles are drawn after the room scene. After converting world position to screen position, the horizontal coordinate is reflected according to the local room's mirror state; text and emotes remain upright.
 
-## 移动预测与镜头
+## Movement Prediction and Camera
 
-本机控制器关联的每个可步行身体，在每次渲染时通过原生移动查询取得最新输入方向，并维护独立显示轨迹；权威确认同时使用状态 tick 和输入序号；同一输入序号下的新 tick 仍恢复权威位置、速度，并按尚未确认输入的方向、时长与控制锁定重新预测。确认序号代表采样状态，不等同于主机模拟步数，这一重算是显示近似，不重放权威玩法。历史最多保留 120 次渲染输入。普通步行预测使用 MoveSpeed 参与方向投影、转向阻尼与反向加速，松键独立衰减；每个半 tick 先应用当前摩擦，再推进位置并更新速度，与原版积分顺序一致。网格检测采样身体半径并沿移动路径分步扫过，受阻时沿可通行轴滑动；传送不沿旧路径扫过障碍。旧显示位置若已与碰撞边界重叠，纠偏从主机接受的位置恢复，避免每次修正都被同一堵墙拒绝；正常预测仍逐段检查网格。飞行与联机幽灵可越过坑洞和普通障碍，仍受实墙限制；幽灵身份不依赖 `CanFly`。拾取、使用、举起／收起物品、药丸和普通受伤反应等允许行走的演出保留移动预测，以控制状态与身体、附加动画共同判断；附加动画未结束本身不代表锁定移动。
+For each walkable body associated with the local controller, every render queries the latest input direction through the native movement interface and maintains an independent display trajectory. Authoritative confirmation uses both the state tick and input sequence. A newer tick with the same input sequence still restores the authoritative position and velocity, then predicts again using the directions, durations, and control locks of unacknowledged inputs. An acknowledgement sequence represents a sampled input state, not the number of host simulation steps. This recalculation is a display approximation and does not replay authoritative gameplay. Up to 120 rendered input samples are retained.
 
-角色与路线兼容组件决定当前身体是否适用普通步行预测；不适用时使用权威运动轨迹，并清除此前的步行偏移，保留真实输入确认序号。地下室的梯子、重力与平台碰撞由原版横版运动模型处理，客机不套用普通房间的自由移动。角色差异见[角色兼容清单](https://github.com/BMingSY/isaac-lan/blob/main/docs/character-compatibility.md)。
+Ordinary walking prediction uses MoveSpeed for direction projection, turn damping, and reverse acceleration; releasing a key decays independently. Each half-tick applies current friction first, then advances position and updates velocity, matching the original integration order. Grid collision samples the body radius and sweeps along the movement path in steps, sliding along a traversable axis when blocked. Teleports do not sweep obstacles along the old path. If an old display position already overlaps a collision boundary, correction starts from the host-accepted position so each correction is not rejected by the same wall; normal prediction still checks each grid segment.
 
-真正的控制锁定暂停新移动并清零预测速度，保留待确认轨迹和真实确认序号，继续平滑处理迟到的权威修正；恢复控制后立即响应本机输入。换房、楼层变化和角色替换清理轨迹；到达过门阈值后等待房主确认目的地，同时启动本机短暂淡出，确认后淡入；反向移动、拒绝、暂停或状态重置会取消显示，不据此提前选房。普通单锁／双锁门在本机钥匙足够或持有金钥匙时，允许最多 250 ms 的门前移动预览，位置限制在源房间内；不调用解锁接口、不消耗钥匙，主机确认开门后才进入过门淡出。拒绝或超时后恢复碰撞并纠偏，持续按住不能反复启动同次预览。靠近小地下室楼梯时也启动过场淡出，转向或松开可取消，入口与返回位置仍由主机决定。客机在目的地淡入期间同时停止移动预测和发送移动输入，不累计结束后补走的路程；淡入从目的地第一帧实际绘制开始计时，房间加载不能消耗尚未显示的演出。主机在完整更新及切房后的半帧检查输入所属房间；旧房间输入只保留同层射击持有值，不能推动新房间中的角色。淡入结束后立即按当前方向预测并发送新输入。
+Flying characters and multiplayer ghosts can cross pits and ordinary obstacles but remain blocked by solid walls. Ghost identity does not depend on `CanFly`. Animations that permit walking, such as pickups, item use, lifting/putting away an item, pills, and ordinary damage reactions, retain movement prediction. Control state, body state, and additional animation are considered together; an unfinished additional animation alone does not mean movement is locked.
 
-本机步行动画在快照外观恢复之后按当前方向播放，独立保留小数帧进度，并按每个身体／装扮的实际动画长度循环；停止、控制锁定和特殊动作保留权威姿态。头部瞄准和额外动作不随步行时钟推进。
+Character and route compatibility components determine whether a body uses ordinary walking prediction. Otherwise, the authoritative movement trajectory is used and previous walking offsets are cleared, while the actual input acknowledgement sequence is retained. Basement ladders, gravity, and platform collisions use the original platforming movement model; guests do not apply free movement from ordinary rooms. See the [Character Compatibility Catalog](https://github.com/BMingSY/isaac-lan/blob/main/docs/character-compatibility.md) for character differences.
 
-跟随身体的武器保留权威相对位置，并在身体预测完成后应用同一显示偏移；激光的路径、终点和命中特效同步平移。被抱起的实体及其武器共享持有者的显示偏移，放下或投掷后恢复自身轨迹。跟随关系由权威持有链接、实体类型、子类型、父引用和原生跟随开关决定，发射者引用本身不代表绑定。自由飞行的攻击保留各自轨迹；关系失效时回退到实体轨迹，换房和角色替换随视图清理。实现见 [attachments.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/presentation/attachments.lua)。
+A true control lock pauses new movement and clears prediction velocity while retaining pending trajectories and the real acknowledgement sequence. Late authoritative corrections continue to be smoothed. Local input responds immediately when control resumes. Room changes, floor changes, and body replacement clear trajectories. After reaching the door threshold, the guest waits for the host to confirm the destination and starts a short local fade-out. Fade-in begins after confirmation. Reverse movement, rejection, pause, or state reset cancels the presentation; it does not select a room early.
 
-独立实体共享主机采集时钟的映射，按采集到当前绘制的估计年龄外推，最多 100 ms；不把收包时刻当成模拟时刻。[时间映射](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/presentation/timeline.lua)结合近期最小到达差和最小 RTT 的一半，过滤排队抖动；非对称链路的一程时间仍是估计值。新状态到达时沿用当前显示位置，偏差从接收时刻开始平滑收敛。NPC 连续权威状态出现明显同向减速时，根据实际 tick 间隔估计速度衰减，并加快制动偏差的收敛；修正起点使用上一帧真正显示的位置，不再沿失效的旧速度额外推进。转向、加速及长时间缺包不沿用这份衰减估计。普通弹体和角色继续使用各自的显示模型，客机不运行 NPC AI 或预测追踪目标。
+For an ordinary single-lock or double-lock door, when the local player has enough keys or a Golden Key, a door-front movement preview of up to 250 ms is allowed. Position remains inside the source room. No unlock interface is called and no key is consumed; door fade-out begins only after the host confirms the door opened. On rejection or timeout, collision is restored and the character is corrected. Holding the direction cannot repeatedly start the same preview.
 
-生成、消失、动画和游戏属性随同一份完整权威视图提交；运动外推只推进显示位置，命中表现由独立事件组件管理。重复 tick 不重启轨迹，超过 96 个坐标单位的突变按传送处理；换房、换层与实体替换清理旧轨迹。未来尚未收到的急停和转向仍可能纠偏。客机镜头在预测位置确定后更新。
+Approaching a small Basement ladder also starts a transition fade. Turning or releasing the input can cancel it; the host still determines the entrance and return position. During guest fade-in at the destination, movement prediction and movement-input sending are both stopped. Distance is not accumulated for a catch-up movement after the fade. Fade-in time starts with the first frame actually drawn at the destination; room loading cannot consume an animation that has not yet appeared on screen.
 
-移动预测仅影响本机显示；特殊外力和复杂移动仍可能纠偏。实现位于 [prediction.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/presentation/prediction.lua)。
+After the host's complete update and a half-frame room-switch check, input is validated against its owning room. Input from the old room retains only same-floor held shooting state and cannot move a character in the new room. Once fade-in ends, prediction and sending resume immediately in the current direction.
 
-## 攻击显示预测
+Local walking animation is applied after snapshot appearance restoration, using the current direction. Fractional frame progress is retained independently and loops according to the actual animation length for each body/costume. Stopping, control lock, and special actions retain the authoritative pose. Head aiming and extra actions do not advance with the walking clock.
 
-本机身体通过原生射击输入查询取得当前瞄准方向，在权威外观恢复之后更新头部与装扮的朝向。支持的蓄力武器从权威武器状态开始重放未确认输入，使用原生武器计算的上限，只替换绘制所需的蓄力值，不用射击间隔乘固定倍数估算；松键取消不会被迟到的蓄力快照重新覆盖。武器差异由[攻击显示策略](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/compat/items/attack_preview.lua)选择，支持范围见[道具兼容清单](https://github.com/BMingSY/isaac-lan/blob/main/docs/item-effect-compatibility.md#攻击显示)。
+Weapons attached to a body retain their authoritative relative positions and receive the same display offset after body prediction. Laser paths, endpoints, and hit effects are translated together. Carried entities and their weapons share the carrier's display offset; after being dropped or thrown, they return to their own trajectories. Attachment relationships are determined by authoritative carry links, entity type/subtype, parent reference, and the native follow flag. A spawner reference alone does not imply attachment. Free-flying attacks retain their own trajectories. When a relationship becomes invalid, the entity falls back to its own trajectory; room changes and body replacement clear old trajectories. See [attachments.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/presentation/attachments.lua).
 
-符合普通单发条件的泪弹按本机冷却时钟绘制短暂的独立精灵，不创建游戏实体、不调用射击函数或随机数。冷却按原生模拟步检查发射并保留小数余量，尚未获得外观时也持续推进武器时钟。外观来自已确认的本角色泪弹；原版以撒的初始泪弹可直接显示。
+Independent entities share the host capture-clock mapping and extrapolate from estimated capture-to-render age, capped at 100 ms. Packet-arrival time is not treated as simulation time. [Timeline mapping](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/presentation/timeline.lua) combines recent minimum arrival difference and half the minimum RTT to filter queue jitter. One-way time on an asymmetric link remains an estimate. When new state arrives, the current display position is retained and the difference converges smoothly from the receive time. When successive authoritative NPC states show clear deceleration in the same direction, the display estimates velocity decay from actual tick intervals and converges the braking correction faster. The correction starts from the position actually displayed in the previous frame; it no longer advances again using an invalid old velocity. This decay estimate is not reused for turning, acceleration, or long gaps without packets. Ordinary projectiles and characters continue to use their own display models; guests do not run NPC AI or predict target tracking.
 
-泪弹初速度由射击方向及预测身体的移动惯性组成，弹速同时缩放这两部分和出生偏移。射程使用角色缓存已经计算的泪弹高度、下落速度和加速度，以原生阻尼／重力顺序推进；不把射程当作固定存活时间。起始随机扰动采用均值近似，权威实体保留实际随机结果。权威泪弹按发射者、包含惯性的发射速度、时龄与输入确认匹配，只接管一个预测精灵；校正时限制相对弹速的减速幅度。未确认精灵受数量、时长、落地和网格碰撞限制；不支持的弹道、组合和未知外观继续等待权威状态。普通弹道计算位于 [tear_motion.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/presentation/tear_motion.lua)。
+Creation, disappearance, animation, and game properties are submitted with the same complete authoritative view. Motion extrapolation advances display position only; hit presentation is managed by a separate event component. Repeated ticks do not restart trajectories. A jump greater than 96 coordinate units is treated as a teleport. Room changes, floor changes, and entity replacement clear old trajectories. An abrupt stop or turn that has not yet arrived may still require correction. The guest camera updates after the predicted position is determined.
 
-攻击显示状态属于当前视图。控制锁定取消未确认精灵，暂停、换房、换层、断开及角色／武器变化清理相应预测；快照停止推进时不持续产生攻击。镜面房间的独立精灵按本机屏幕镜像绘制；预览不经过原生实体的完整房间着色与水面反射，接管时颜色及倒影可能变化。权威命中、伤害、碰撞效果实体、声音、拾取和道具效果由主机决定；普通泪弹的局部命中表现使用下面的事件确认。实现位于 [attacks.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/presentation/attacks.lua) 和 [attack_prediction.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/presentation/attack_prediction.lua)。
+Movement prediction affects only local presentation; special forces and complex movement may still be corrected. Implementation: [prediction.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/presentation/prediction.lua).
 
-## 命中表现预测
+## Attack Presentation Prediction
 
-[命中组件](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/presentation/hits.lua)在实体位置预测完成后，用本机普通泪弹与可受击 NPC 的相对运动做连续圆形接触检测，选择最早接触并检查路径网格。接触当帧按原版受击样式绘制目标，暂时隐藏预计消耗的泪弹；不调用伤害、死亡、AI、原生实体更新或随机数。短暂闪烁只在房间绘制作用域内覆盖，退出绘制立即恢复精灵颜色，不成为持久快照属性。
+The local body obtains its current aim direction through the native shooting-input query. After authoritative appearance restoration, it updates the direction of the head and costume. Supported charge weapons replay unacknowledged input from authoritative weapon state, using the limit calculated by the native weapon. Only the charge value required for drawing is replaced; charge is not estimated by multiplying the firing interval by a fixed factor. A late charge snapshot cannot override a release that already cancelled charging. Weapon differences are selected by the [Attack Presentation Strategy](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/compat/items/attack_preview.lua); supported scope is listed in the [Item Compatibility Catalog](https://github.com/BMingSY/isaac-lan/blob/main/docs/item-effect-compatibility.md#attack-presentation).
 
-[事件账本](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/presentation/event_ledger.lua)用主机来源／目标 ID 对应预测，确认时保留原播放时钟，重复或迟到的事件不重新播放。主机否决或确认了另一个目标时撤销错误表现；350 ms 未获结果时恢复被隐藏的弹体。暂停、过门、换层、断开及视图失效统一清理；250 ms 没有新状态时停止预测。房间变化清理效果但保留事件序号，避免回房重播旧事件；新楼层或会话可重新建立序号上下文。
+Tears that meet ordinary single-shot conditions are drawn as short-lived independent sprites according to the local cooldown clock. They do not create game entities, call the firing function, or use random numbers. Cooldown is checked on native simulation steps and retains fractional remainder. The weapon clock continues advancing even before the appearance is available. Appearance is taken from a confirmed tear fired by the local character; Isaac's original starting tear can be displayed directly.
 
-未预测的权威命中只播放其剩余闪烁时间。主机自己的受击显示也使用原生受击样式和时长，并在绘制后恢复原值。正常颜色、染色和 Mod 的其他 SetColor 调用保留原语义。
+Initial tear velocity combines the firing direction with predicted body movement inertia. Tear speed scales both components and the spawn offset. Range uses the tear height, falling speed, and acceleration already calculated in the character cache, advancing them in native damping/gravity order; range is not treated as a fixed lifetime. Initial random spread uses a mean approximation, while authoritative entities retain their actual random result. Authoritative tears are matched by shooter, firing velocity including inertia, age, and input acknowledgement. Only one prediction sprite is taken over. During correction, deceleration relative to projectile speed is limited. Unacknowledged sprites are limited by count, lifetime, landing, and grid collision. Unsupported trajectories, combinations, and unknown appearances continue waiting for authoritative state. Ordinary projectile calculations are in [tear_motion.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/presentation/tear_motion.lua).
 
-该接触预测适用于已收到主机实体 ID 的普通蓝／血泪，包括可逐颗识别的普通多发泪弹。尚无主机身份的发射预览、激光、近战、穿透、爆炸和带特殊 TearFlags 的泪弹使用权威事件显示；不据此声称任意道具或怪物 AI 已实现本地模拟。原生撞击音效和碰撞效果实体仍按主机事件／状态显示，避免重复触发。
+Attack-presentation state belongs to the current view. Control lock cancels unacknowledged sprites. Pause, door transitions, floor changes, disconnects, and character/weapon changes clear the corresponding prediction. Attacks are not continuously generated when snapshots stop advancing. Independent sprites in mirror rooms are drawn using the local screen-mirror state. Preview sprites do not pass through the full native room shading and water-reflection pipeline, so their color/reflection may change when authoritative state takes over.
 
-## 音画事件与资源
+The host decides authoritative hits, damage, collision-effect entities, sounds, pickups, and item effects. Local hit presentation for ordinary tears uses the event confirmation described below. Implementation: [attacks.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/presentation/attacks.lua) and [attack_prediction.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/presentation/attack_prediction.lua).
 
-声音和 Boss 播报按房间观看者筛选，卡牌、药丸、道具提示与全屏演出按触发者控制器筛选。事件使用序号与楼层代次去重，客机仅恢复表现，不调用原版道具使用方法。
+## Hit Presentation Prediction
 
-音乐请求按 `(floorEpoch, dimension, roomIndex)` 管理，包含当前曲目及排队的后续曲目；未记录的房间由原生选择器读取。各房间使用独立的虚拟曲目 ID，实际播放通道只属于本机视图。留在房间的玩家按原生顺序播放前奏／结束曲与后续曲目，后来进入的玩家直接接入后续曲目；重复快照不重播已接收的请求。载荷与作用域边界见[音频能力](https://github.com/BMingSY/isaac-lan/blob/main/docs/native-backend.md#房间音乐)。
+After entity-position prediction, the [hit component](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/presentation/hits.lua) performs continuous circular-contact detection between local ordinary tears and hittable NPCs, using relative movement. It selects the earliest contact and checks the path against grids. On the contact frame, the target is drawn with the original hit appearance and the tear expected to be consumed is temporarily hidden. It does not call damage, death, AI, native entity updates, or random numbers. A short flash overrides drawing only within the room render scope; the sprite color is restored immediately after drawing and is not stored as a persistent snapshot property.
 
-房主在各房间更新中采集动画，客机在渲染边界恢复角色装扮、蓄力、阴影、激光路径和精灵层状态。
+The [event ledger](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/presentation/event_ledger.lua) matches predictions using host source/target IDs. When confirmed, it retains the original playback clock; duplicate or late events do not replay. If the host rejects the prediction or confirms a different target, the incorrect presentation is reverted. If no result arrives within 350 ms, the hidden projectile is restored. Pause, door entry, floor changes, disconnects, and invalid views all clear the relevant state. Prediction stops when no new state has arrived for 250 ms. Room changes clear effects but retain event sequence numbers to prevent old events from replaying after returning. A new floor or session can establish a new sequence context.
 
-每个控制器拥有独立的原生 ItemOverlay，由房主推进并同步状态、延时和精灵。客机不执行会产生治疗或转场副作用的原生 Overlay 更新。额外表现对象由游戏自己的构造／析构入口管理，背景烘焙与渲染资源清理也遵循本机房间的生命周期。
+Authoritative hits that were not predicted play only their remaining flash duration. The host's own hit display also uses the original hit appearance and duration, restoring the original value after drawing. Normal color, tint, and other Mod calls to SetColor retain their original semantics.
 
-纯本地效果只有在明确排除玩法影响后才不分配同步 ID；其余实体和效果由权威视图恢复。后台房间对进程级渲染状态的临时改动须在本机显示前还原。
+This contact prediction applies to ordinary blue/red tears for which a host entity ID has been received, including ordinary multi-shot tears that can be identified individually. Firing previews without a host identity, lasers, melee, piercing, explosions, and tears with special TearFlags use authoritative event presentation. This does not claim that arbitrary items or monster AI are simulated locally. Native impact sounds and collision-effect entities are still displayed from host events/state to avoid duplicate triggers.
 
-## Mod 回调与输入
+## Audio-Visual Events and Resources
 
-全局 `MC_POST_NEW_ROOM`、`MC_POST_UPDATE` 在本机房间上下文执行；房主的实体、伤害等玩法回调在相应权威房间执行。渲染与 UI 通过 `input::ViewScope` 使用本机物理输入，角色战斗消费房主收到的对应控制器输入。
+Sounds and Boss announcements are filtered by room viewers. Cards, pills, item notifications, and full-screen animations are filtered by the triggering controller. Events use sequence numbers and floor generations for deduplication. Guests restore presentation only; they do not call original item-use methods.
 
-第三方界面通过[主机动作 API](https://github.com/BMingSY/isaac-lan/blob/main/docs/third-party-mod-integration.md#主机动作与回执)或受限房间请求表达操作意图，不能提交任意世界状态。依赖全局回调的玩法 Mod 需要明确适配；任意 Mod 私有状态不会自动复制，支持范围见[兼容清单](https://github.com/BMingSY/isaac-lan/blob/main/docs/mod-compatibility.md)。
+Music requests are managed by `(floorEpoch, dimension, roomIndex)` and include the current track and queued follow-up tracks. For rooms with no recorded request, the native selector is used. Each room has an independent virtual track ID, while the actual playback channel belongs only to the local view. Players who remain in a room hear the intro/end track and follow-up tracks in original order; players who enter later join the follow-up track directly. Repeated snapshots do not replay an already received request. Payload and scope boundaries are described in [Audio Capabilities](https://github.com/BMingSY/isaac-lan/blob/main/docs/native-backend.md#room-music).
+
+The host captures animations during each room update. Guests restore character costumes, charge, shadows, laser paths, and sprite-layer state at the render boundary.
+
+Each controller owns an independent native ItemOverlay. The host advances it and synchronizes its state, delay, and sprite. Guests do not run native Overlay updates that could cause healing or transition side effects. Additional presentation objects are managed through the game's own construction/destruction entry points. Background baking and render-resource cleanup also follow the local-room lifecycle.
+
+Purely local effects receive no synchronization ID only when they are explicitly known to have no gameplay impact. Other entities and effects are restored from authoritative views. Temporary changes to process-wide render state in background rooms must be restored before local presentation.
+
+## Mod Callbacks and Input
+
+Global `MC_POST_NEW_ROOM` and `MC_POST_UPDATE` callbacks run in the local-room context. Host-side entity, damage, and other gameplay callbacks run in the corresponding authoritative room. Rendering and UI use local physical input through `input::ViewScope`; character combat consumes the corresponding controller input received by the host.
+
+Third-party interfaces express intent through the [Host Actions API](https://github.com/BMingSY/isaac-lan/blob/main/docs/third-party-mod-integration.md#host-actions-and-receipts) or restricted room requests. They cannot submit arbitrary world state. Gameplay Mods that depend on global callbacks need explicit adapters. Private state belonging to arbitrary Mods is not copied automatically; see the [Mod Compatibility Catalog](https://github.com/BMingSY/isaac-lan/blob/main/docs/mod-compatibility.md) for supported scope.
