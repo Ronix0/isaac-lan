@@ -1,9 +1,9 @@
-# 第三方 Mod 兼容清单
+# Third-Party Mod Compatibility
 
-内置适配以 Mod 来源和实际接口为准，不锁定以下参考版本或源码哈希；上游接口缺失时只暂停对应适配，不阻止 Mod 加载。
+Built-in adapters identify mods by their source and the interfaces they actually expose. They do not pin the reference versions or source hashes listed below. If an upstream interface is missing, only the relevant adapter is paused; the mod itself is still allowed to load.
 
-| Mod | 兼容后的效果 |
+| Mod | Compatibility behavior |
 | --- | --- |
-| Stats+ 2.1.3 | 属性面板只显示本机角色，保留双角色布局；联机时隐藏射速上限和 D8 历史倍率。 |
-| GoodTrip 原版 1.2.8 | 使用本机地图发起传送，只移动发起者；主机无需安装 GoodTrip。传送遵循清房、已访问房间、秘密房路径和诅咒房代价等限制；联机时关闭快捷重开。 |
-| EID 5.24／5.25 | 基础说明使用本机角色与房间；补足客机附近实体查询漏项，支持副本首帧说明，换房、换层和沙漏回退后刷新；保留本机语言与配置。Flip 隐藏信息、动态说明、合成及随机预测未完整覆盖。 |
+| Stats+ 2.1.3 | The stat panel displays only the local character while preserving the dual-character layout. During multiplayer, the fire-rate cap and historical D8 multiplier are hidden. |
+| GoodTrip (original) 1.2.8 | Teleportation is initiated using the local map and moves only the requesting player. The host does not need GoodTrip installed. Teleportation retains restrictions such as room-clearing requirements, visited-room checks, secret-room paths, and Curse Room costs. Quick restart is disabled during multiplayer. |
+| EID 5.24 / 5.25 | Basic descriptions use the local character and room. Missing nearby-entity queries on guests are supplemented, first-frame descriptions for replicas are supported, and descriptions refresh after room changes, floor changes, and Hourglass rewinds. Local language and settings are preserved. Flip hidden information, dynamic descriptions, crafting, and random predictions are not fully covered. |
