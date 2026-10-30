@@ -298,7 +298,7 @@ function _IsaacLanMenuRender(
         centered(
             "Enabled: "
                 .. ruleCount
-                .. " rules"
+                .. (ruleCount == 1 and " rule" or " rules")
                 .. (host and not (challenge and challenge.roomOptionsLocked) and "" or " · Read-only"),
             110,
             82,
