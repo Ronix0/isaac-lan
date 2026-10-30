@@ -65,7 +65,7 @@ return function(deps, wire)
             if not origin or origin.index == nil or origin.dimension == nil then
                 return false
             end
-            text = "【房间】" .. text
+            text = "[Room] " .. text
             if #text > limits.commandBytes then
                 return false
             end
@@ -113,7 +113,7 @@ return function(deps, wire)
     function chat.parse(text)
         local count = length(text)
         if not count or #text > limits.commandBytes then
-            return nil, "输入无效或命令过长"
+            return nil, "Invalid input or command too long"
         end
         text = text:gsub("[\r\n\t]", " "):gsub("^%s+", "")
         if text:match("^%s*$") then
@@ -129,20 +129,20 @@ return function(deps, wire)
                 or text:find("%f[%w_]dofile%s*%(")
                 or text:find("%f[%w_]loadfile%s*%(")
             then
-                return nil, "控制台命令请使用 /console 命令"
+                return nil, "Use /console for console commands"
             end
             if count > limits.characters then
-                return nil, "每条聊天最多 " .. limits.characters .. " 字"
+                return nil, "Each chat message can contain up to " .. limits.characters .. " characters"
             end
             local body, audience = scope(text)
             if body:match("^%s*$") or text:match("^%-%-room%s*$") then
-                return nil, "请输入内容"
+                return nil, "Please enter a message"
             end
             return { kind = "text", text = body, audience = audience }
         end
         local name, args = text:match("^/([^%s]+)%s?(.*)$")
         if not name then
-            return nil, "请输入命令"
+            return nil, "Please enter a command"
         end
         local lower = name:lower()
         if lower == "h" or lower == "help" then
@@ -175,11 +175,11 @@ return function(deps, wire)
         if lower == "console" or lower == "c" then
             args = args:gsub("^%s+", "")
             if args == "" then
-                return nil, "用法：/console 原版命令，例如 /c giveitem c1"
+                return nil, "Usage: /console <game command>, e.g. /c giveitem c1"
             end
             return { kind = "native", text = args }
         end
-        return nil, "未知聊天命令；原版命令请使用 /console 命令"
+        return nil, "Unknown chat command. Use /console for game commands."
     end
     local function rollExpression(owner, parsed, audience)
         local info = deps.info()
@@ -195,11 +195,11 @@ return function(deps, wire)
         end
         local result, total = dice.roll(parsed, deps.roll)
         if not result then
-            errorTo("掷骰失败，请重试", owner)
+            errorTo("Dice roll failed. Please try again", owner)
             return nil
         end
         chat.output(
-            (owner + 1) .. "P 掷骰：" .. result,
+            (owner + 1) .. " rolled: " .. result,
             { owner = owner, audience = audience, bubble = true }
         )
         return total
@@ -250,7 +250,7 @@ return function(deps, wire)
         if parsed and parsed.audience == "room" then
             local info, context = deps.info(), deps.context(sender)
             if info.ready ~= 1 or not context then
-                errorTo("房间消息未发送：游戏尚未就绪", sender)
+                errorTo("Room message not sent: The game is not ready", sender)
                 return
             end
             if
@@ -259,7 +259,7 @@ return function(deps, wire)
                 or context.index ~= request.room
                 or context.dimension ~= request.dimension
             then
-                errorTo("房间消息未发送：角色或房间已变化", sender)
+                errorTo("Room message not sent: The character or room has changed", sender)
                 return
             end
         end
@@ -276,18 +276,18 @@ return function(deps, wire)
             rollExpression(sender, parsed.dice, parsed.audience)
         elseif parsed.kind == "native" or parsed.kind == "teleport" then
             if deps.info().ready ~= 1 then
-                errorTo("命令未执行：游戏尚未就绪", sender)
+                errorTo("Command not executed: The game is not ready", sender)
                 return
             end
             if #commands >= 16 then
-                errorTo("命令队列已满", sender)
+                errorTo("Command queue is full", sender)
                 return
             end
             request.owner, request.command, request.kind =
                 sender, parsed.text or parsed.target, parsed.kind
             commands[#commands + 1] = request
         else
-            errorTo("此命令在本机执行", sender)
+            errorTo("This command runs locally", sender)
         end
     end
     function chat.submit(text)
@@ -311,14 +311,14 @@ return function(deps, wire)
         end
         if parsed.kind == "help" then
             for _, line in ipairs({
-                "/h /help：命令帮助",
-                "/e /echo 文字：仅自己可见",
+                "/h /help: Show command help",
+                "/e /echo text: Visible only to you",
                 table.concat(dice.help(limits.dice), "\n"),
-                "聊天／掷骰末尾加 --room：仅当前房间共享",
-                "/c /console 命令：原版控制台",
-                "/tp help：传送命令",
-                "/lanbot help：托管命令",
-                "/feedback /fb 描述：上传日志并反馈问题",
+                "Add --room to the end of a chat message or dice roll to share it only with your current room",
+                "/c /console command: Game console",
+                "/tp help: Teleport commands",
+                "/lanbot help: Bot commands",
+                "/feedback /fb description: Upload logs and report an issue",
             }) do
                 chat.output(line, { audience = "self" })
             end
@@ -354,7 +354,7 @@ return function(deps, wire)
         if deps.send(0, wire.encodeRequest(request)) then
             return true
         end
-        errorTo("消息未发送，连接尚未就绪")
+        errorTo("Message not sent: The connection is not ready")
         return false
     end
     function chat.sendEmote(id)
@@ -447,7 +447,7 @@ return function(deps, wire)
             or context.index ~= request.room
             or context.dimension ~= request.dimension
         then
-            errorTo("命令未执行：角色或房间已变化", request.owner)
+            errorTo("Command not executed: The character or room has changed", request.owner)
             return
         end
         executingOwner = request.owner
@@ -455,9 +455,9 @@ return function(deps, wire)
         local ok, result = pcall(execute, request.owner, request.command)
         executingOwner = nil
         if not ok then
-            result = "命令执行失败：" .. tostring(result)
+            result = "Command execution failed: " .. tostring(result)
         end
-        result = result or "命令未执行：游戏尚未就绪"
+        result = result or "Command not executed: The game is not ready"
         -- Keep native multiline output readable without exceeding wire bounds.
         for line in result:gmatch("[^\r\n]+") do
             while #line > limits.commandBytes do
