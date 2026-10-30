@@ -1,13 +1,13 @@
-# 角色兼容清单
+# Character Compatibility
 
-| 角色 | 兼容后的效果 |
+| Character | Compatibility behavior |
 | --- | --- |
-| 里店长 | 队伍中有里店长时，全队商店采用里店长的布局和定价，首层及分房后均生效。 |
-| 里游魂（Tainted Lost） | 全队共享其道具筛选、低品质道具重抽和神圣卡生成特性，分房后仍生效。 |
-| 骸骨／灵魂（Forgotten／Soul） | 同步当前及隐藏形态的生命，包括灵魂心、黑心和骨心。 |
-| 里拉撒路（Tainted Lazarus） | 生命逆转的另一面道具阴影同步原版精灵、贴图和显示状态，翻转及阴影消失随主机更新。 |
-| 里莉莉丝 | 跟班绳索同步原生几何与材质，在客机本地绘制，不执行客机跟班攻击逻辑。 |
-| 里骸骨（Tainted Forgotten） | 灵魂保留本地行走预测，骨架使用主机的运动轨迹，不随灵魂方向输入产生步行偏移。 |
-| 联机幽灵 | 所在房间没有在线存活队友时随队转移，使用目标房间中存活队友的位置落地；仍有存活队友同房时保留自由移动，客机预测允许飞越坑洞与地面障碍。 |
+| Tainted Keeper | If a Tainted Keeper is in the party, all players' shops use Tainted Keeper's layout and pricing. This applies on the first floor and after players split into separate rooms. |
+| Tainted Lost | The party shares its item filtering, rerolls for low-quality items, and Holy Card generation behavior. These effects continue to work when players are in separate rooms. |
+| The Forgotten / The Soul | Current and hidden-form health is synchronized, including Soul Hearts, Black Hearts, and Bone Hearts. |
+| Tainted Lazarus | The shadow of the other side's items in Flip is synchronized with the original sprite, textures, and display state. Flipping and shadow disappearance follow the host's updates. |
+| Tainted Lilith | The familiar's cord uses synchronized native geometry and materials. It is drawn locally on guests, without running guest-side familiar attack logic. |
+| Tainted Forgotten | The Soul retains local movement prediction, while the skeleton follows the host's movement trajectory and does not drift in response to the Soul's directional input. |
+| Multiplayer ghosts | A ghost moves with the party when no living online teammate remains in its current room, landing at the position of a living teammate in the destination room. If a living teammate is still in the same room, the ghost retains free movement. Guest prediction allows it to fly over pits and ground obstacles. |
 
-里游魂的原版 J460 生成规则：只保留攻击性候选，品质 0／1 额外有五分之一概率重抽；允许特殊卡时有十分之一概率替换为神圣卡。后端仅在生成查询期间借用完整名单，保留原版种子与算法；个人生命、飞行与出生库存不共享。入口与签名见 [`entrypoints.h`](https://github.com/BMingSY/isaac-lan/blob/main/src/engine/versions/j460/entrypoints.h) 和 [`signatures.inc`](https://github.com/BMingSY/isaac-lan/blob/main/src/engine/versions/j460/signatures.inc)。
+The original J460 generation rules for Tainted Lost are preserved: only offensive candidates are kept, and quality 0/1 items have an additional one-in-five chance to be rerolled. When special cards are allowed, there is a one-in-ten chance of replacing one with a Holy Card. The backend temporarily borrows the complete list only during generation queries, preserving the original seed and algorithm. Personal health, flight, and starting inventory are not shared. See [`entrypoints.h`](https://github.com/BMingSY/isaac-lan/blob/main/src/engine/versions/j460/entrypoints.h) and [`signatures.inc`](https://github.com/BMingSY/isaac-lan/blob/main/src/engine/versions/j460/signatures.inc) for entry points and signatures.
