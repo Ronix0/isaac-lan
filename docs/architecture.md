@@ -1,34 +1,34 @@
-# 架构概览
+# Architecture Overview
 
-Isaac LAN 在游戏进程中加载原生 DLL，并嵌入 Lua 桥接。房主运行原版玩法与分房模拟，客机提交输入、应用权威状态，并显示自己的房间。游戏对象、Lua 调用、状态采集／应用和会话决策留在游戏主线程；一个网络线程负责事件驱动的收发和实时字节处理，按需启动的大数据工作线程负责存档压缩、校验和解压。线程之间转移独立数据的所有权，不共享游戏对象。
+Isaac LAN loads a native DLL into the game process and embeds a Lua bridge. The host runs the original gameplay and simulates separate rooms. Guests submit input, apply authoritative state, and render their own room. Game objects, Lua calls, state capture/application, and session decisions stay on the game's main thread. A network thread handles event-driven sending, receiving, and real-time byte processing. An on-demand bulk-data worker handles save compression, validation, and decompression. Threads transfer ownership of independent data; they do not share game objects.
 
 ```mermaid
 flowchart LR
-    I[本机输入] --> C[客机 Session]
-    C -->|输入与请求| H[房主 Session]
-    H --> G[原生游戏与分房模拟]
-    G --> S[Lua 采集]
-    S -->|各客机的房间视图| H
-    H -->|状态与可靠事件| C
-    C --> R[副本恢复]
-    R --> P[预测与本机显示]
+    I[Local input] --> C[Guest session]
+    C -->|Input and requests| H[Host session]
+    H --> G[Native game and room simulation]
+    G --> S[Lua capture]
+    S -->|Room view for each guest| H
+    H -->|State and reliable events| C
+    C --> R[Replica restoration]
+    R --> P[Prediction and local rendering]
 ```
 
-## 技术选择
+## Technical Choices
 
-| 选择 | 收益 | 代价或约束 |
+| Choice | Benefit | Cost or constraint |
 | --- | --- | --- |
-| 房主权威状态同步 | 无需各进程保持完整 RNG 和执行顺序一致 | 需要采集、编码和应用状态；伤害、拾取等等待房主结果 |
-| 原生后端＋Lua 桥接 | 复用原版房间、战斗、存档与多人 HUD | 原生调用、布局和对象生命周期必须逐版本核对 |
-| IPv4／IPv6 UDP／ENet | 实时视图允许过期，控制事务与检查点可靠交付 | 分片缺失会丢弃整份实时视图；可靠恢复共享带宽，仍需限制积压 |
-| 本机移动预测 | 移动无需等待每次网络确认 | 仅用于显示，复杂外力和特殊移动可能纠偏 |
+| Host-authoritative state synchronization | Processes do not need to keep all RNG state and execution order identical. | State must be captured, encoded, and applied. Damage, pickups, and similar actions wait for the host's result. |
+| Native backend + Lua bridge | Reuses original rooms, combat, saves, and multiplayer HUD. | Native calls, memory layouts, and object lifetimes must be checked for each game version. |
+| IPv4/IPv6 UDP/ENet | Real-time views may become stale, while control transactions and checkpoints are delivered reliably. | Missing fragments discard an entire real-time view. Reliable recovery shares bandwidth, so backlogs still need limits. |
+| Local movement prediction | Movement does not need to wait for every network acknowledgement. | Used for display only; complex forces and special movement may require correction. |
 
-加载链为 `winmm.dll → isaac_lan_probe.dll → 嵌入 Lua`。分房通过顺序切换原生房间上下文实现；每份客机视图包含全队角色主要状态、共同地图，以及本机房间的实体、网格和表现。
+The loading chain is `winmm.dll → isaac_lan_probe.dll → embedded Lua`. Separate-room simulation is implemented by switching native room contexts in sequence. Each guest view contains the main state of all party characters, the shared map, and the entities, grids, and presentation data for that guest's local room.
 
-## 支持边界
+## Support Boundaries
 
-- 原生后端针对 Windows x86 Repentance+ `v1.9.7.17.J460`；新版本需要重新校验入口、ABI 与布局。
-- 所有玩家须使用相同协议和扩展构建；Mod 差异只提示，不通用同步 Mod 私有数据。
-- 房主不能迁移。整场续玩要求原人数、原加入顺序；运行中的客机重连按保留的玩家标识恢复。
+- The native backend targets Windows x86 Repentance+ `v1.9.7.17.J460`. Newer versions require revalidation of entry points, ABI, and memory layouts.
+- All players must use the same protocol and extension build. Mod differences are reported, but private mod data is not synchronized generically.
+- The host cannot be migrated. Resuming a full run requires the original player count and join order. A guest reconnecting during a run is restored using its retained player identity.
 
-按修改任务阅读[分层与所有权](https://github.com/BMingSY/isaac-lan/blob/main/docs/layers-and-compatibility.md)、[同步契约](https://github.com/BMingSY/isaac-lan/blob/main/docs/synchronization.md)、[会话恢复](https://github.com/BMingSY/isaac-lan/blob/main/docs/session-lifecycle.md)或[房间与表现](https://github.com/BMingSY/isaac-lan/blob/main/docs/rooms-and-presentation.md)。构建和检查入口见[开发与测试](https://github.com/BMingSY/isaac-lan/blob/main/docs/development-and-testing.md)。
+Depending on the task, read [Layers and Ownership](https://github.com/BMingSY/isaac-lan/blob/main/docs/layers-and-compatibility.md), [Synchronization Contract](https://github.com/BMingSY/isaac-lan/blob/main/docs/synchronization.md), [Session Recovery](https://github.com/BMingSY/isaac-lan/blob/main/docs/session-lifecycle.md), or [Rooms and Presentation](https://github.com/BMingSY/isaac-lan/blob/main/docs/rooms-and-presentation.md). Build and verification entry points are documented in [Development and Testing](https://github.com/BMingSY/isaac-lan/blob/main/docs/development-and-testing.md).
