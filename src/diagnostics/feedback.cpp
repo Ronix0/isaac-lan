@@ -339,10 +339,10 @@ void run(Job job) {
         result = {outcome.accepted, outcome.text};
     } catch (const std::exception& error) {
         logging::write(std::string("feedback_package_failure=") + error.what());
-        result = {false, "反馈打包失败"};
+        result = {false, "Failed to package feedback"};
     }
     if (!result.first && !saved.empty())
-        result.second += "。反馈包已保存到 " + utf8(saved) + "，可以直接发给作者";
+        result.second += ". The feedback package was saved to " + utf8(saved) + "; you can send it directly to the author";
     auto& state = shared();
     std::lock_guard lock(state.mutex);
     state.busy = false;
@@ -366,29 +366,29 @@ int submit(lua_State* L) {
     const char* text = lua.checkString(L, 1, &length);
     const auto description = trim(std::string_view(text, length));
     if (!validDescription(description))
-        return reply(L, false, "请在命令后写上问题描述");
+        return reply(L, false, "Please include a description of the issue after the command");
     if (environment.endpoint.empty())
-        return reply(L, false, "当前环境未启用反馈上传");
+        return reply(L, false, "Feedback uploads are not enabled in this environment");
     const auto launch = logging::currentLaunch();
     if (launch.empty())
-        return reply(L, false, "日志目录不可用，无法提交反馈");
+        return reply(L, false, "The log directory is unavailable, so feedback cannot be submitted");
     auto& state = shared();
     std::lock_guard lock(state.mutex);
     if (state.busy)
-        return reply(L, false, "上一条反馈仍在上传，请稍候");
+        return reply(L, false, "Your previous feedback is still uploading. Please wait.");
     const auto now = Clock::now();
     if (state.started && now - *state.started < cooldown)
-        return reply(L, false, "反馈提交过于频繁，请稍后再试");
+        return reply(L, false, "Feedback is being submitted too frequently. Please try again later.");
     try {
         std::thread(run, Job{description, argument(L, 2), argument(L, 3), launch, environment})
             .detach();
     } catch (const std::system_error&) {
-        return reply(L, false, "无法启动反馈上传");
+        return reply(L, false, "Could not start the feedback upload");
     }
     state.busy = true;
     state.result.reset();
     state.started = now;
-    return reply(L, true, "正在收集日志并上传反馈……");
+    return reply(L, true, "Collecting logs and uploading feedback…");
 }
 // feedback_poll() -> nothing while running, or accepted, message once.
 int poll(lua_State* L) {
