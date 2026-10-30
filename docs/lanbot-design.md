@@ -1,55 +1,55 @@
-# LANBOT 实现与约束
+# LANBOT Implementation and Constraints
 
-LANBOT 读取已有视图并合成正常移动和射击输入，主机继续决定伤害、拾取、传送和道具效果。命令与支持范围见[使用说明](https://github.com/BMingSY/isaac-lan/blob/main/docs/lanbot.md)。
+LANBOT reads existing views and synthesizes normal movement and shooting input. The host remains authoritative for damage, pickups, teleportation, and item effects. See the [user guide](https://github.com/BMingSY/isaac-lan/blob/main/docs/lanbot.md) for commands and supported behavior.
 
-## 模块与数据流
+## Modules and Data Flow
 
 ```mermaid
 flowchart LR
-    C[命令与生命周期] --> P[路线与目标]
-    O[本机只读观察] --> P
-    O --> B[战斗与避险]
+    C[Commands and lifecycle] --> P[Routes and goals]
+    O[Read-only local observation] --> P
+    O --> B[Combat and threat avoidance]
     P --> B
-    B --> I[合成输入]
-    I --> N[既有预测和 LAN 输入链路]
+    B --> I[Synthesized input]
+    I --> N[Existing prediction and LAN input path]
 ```
 
-| 模块 | 职责 |
+| Module | Responsibility |
 | --- | --- |
-| [lanbot.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/lanbot.lua) | 命令、状态、调度、蓄力与输入清理 |
-| [observe.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/lanbot/observe.lua) | 本机角色、房间、敌人、地形和武器观察 |
-| [planner.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/lanbot/planner.lua)、[navigation.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/lanbot/navigation.lua) | 连通图、目标、预算与有界 A* |
-| [terrain.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/lanbot/terrain.lua)、[hazards.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/lanbot/hazards.lua) | 地形、周期机关和连续碰撞预测 |
-| [combat.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/lanbot/combat.lua) | 站位、短时轨迹评分、射击与受阻恢复 |
-| [greed.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/lanbot/greed.lua)、[items.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/lanbot/items.lua) | 贪婪阶段、购物预算与道具分配 |
-| [automation_input.h](https://github.com/BMingSY/isaac-lan/blob/main/src/core/automation_input.h) 与版本输入后端 | 输入来源、边沿、过期释放和预测共用 |
+| [lanbot.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/lanbot.lua) | Commands, state, scheduling, charge handling, and input cleanup |
+| [observe.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/lanbot/observe.lua) | Observation of the local character, room, enemies, terrain, and weapons |
+| [planner.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/lanbot/planner.lua), [navigation.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/lanbot/navigation.lua) | Connectivity graph, goals, budgets, and bounded A* |
+| [terrain.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/lanbot/terrain.lua), [hazards.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/lanbot/hazards.lua) | Terrain, periodic hazards, and continuous collision prediction |
+| [combat.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/lanbot/combat.lua) | Positioning, short-horizon trajectory scoring, shooting, and recovery from blocked movement |
+| [greed.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/lanbot/greed.lua), [items.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/lanbot/items.lua) | Greed-mode phases, shopping budgets, and item allocation |
+| [automation_input.h](https://github.com/BMingSY/isaac-lan/blob/main/src/core/automation_input.h) and the version-specific input backend | Shared handling of input sources, edges, stale-input release, and prediction |
 
-组件通过嵌入清单装配，使用既有输入协议，不依赖测试夹具或实验目录。
+Components are assembled through the embedded-module manifest and use the existing input protocol. They do not depend on test fixtures or experimental directories.
 
-## 状态与观察
+## State and Observation
 
-托管状态为 `off`／`running`／`paused`，目标模式与战斗风格独立。切换模式取消旧任务，退出、断线或整局身份变化重置状态。观察与缓存绑定整局、楼层、房间、维度和角色身份，换房或身体替换后重新建立。
+The control state is `off`, `running`, or `paused`. The target mode and combat style are independent. Changing modes cancels the previous task. Leaving, disconnecting, or changing run identity resets the state. Observations and caches are bound to the run, floor, room, dimension, and character identity; they are rebuilt after room changes or body replacement.
 
-客机以已接受快照中的权威坐标判断出口接触，避免显示预测被误认为真实到达。观察超过 250 ms、对象失效或决策异常时释放输入并等待或暂停，不使用失效原生指针。
+Guests use accepted snapshot coordinates as the authority for exit contact, so predicted display positions are not mistaken for actual arrival. If an observation is older than 250 ms, an object becomes invalid, or a decision fails, input is released and the bot waits or pauses. Invalid native pointers are never reused.
 
-## 规划与决策
+## Planning and Decisions
 
-| 阶段 | 策略与边界 |
+| Phase | Strategy and boundaries |
 | --- | --- |
-| 探索 | 连通图来自访问记录、可见地图与门；大型房间入口归并，不读取未知房间内容 |
-| 路线 | `run` 完成可达分支再选出口，`explore` 完成后等待，`hold` 不离房；失败边冷却不等于探索完成 |
-| 目标 | 房间／楼层变化确认到达；门口通道优先离门，资源、连接或对象变化使计划失效 |
-| 可通行性 | 按角色半径、飞行、坑洞、网格和实体障碍检查完整轨迹；周期机关须有足够通过窗口 |
-| 战斗 | 先排除不可通行轨迹，再按受伤风险、退路、射程、视线和目标进度评分；保留短期方向稳定性 |
-| 避险 | 使用连续相对轨迹与惯性、观察年龄、输入延迟、减速尾段预测，覆盖已识别的敌人、弹幕、激光和爆炸 |
-| 受阻恢复 | 重规划、切换输出位置或冷却目标；全部候选无效时报告等待，不直接改坐标或碰撞 |
-| 贪婪 | 每层按 `fight → supply → loot → gather → leave` 推进，补给预算与完成状态保留到换层 |
-| 道具分配 | 按收益、预算和已有数量选择可接收队友；稳定身份用于平分，目标消失、过期或世界重建清理预留 |
+| Exploration | The connectivity graph uses visit records, visible map data, and doors. Large-room entrances are merged; unknown room contents are not inspected. |
+| Routes | `run` completes reachable branches before choosing an exit; `explore` waits after exploration is complete; `hold` does not leave the room. A failed edge being on cooldown does not mean exploration is complete. |
+| Goals | Arrival is confirmed by room/floor changes. Door corridors are prioritized for leaving the door area. Changes to resources, connectivity, or objects invalidate the plan. |
+| Traversability | Full trajectories are checked against character radius, flight, pits, grids, and entity obstacles. Periodic hazards require a sufficiently long safe crossing window. |
+| Combat | Impassable trajectories are rejected first. Remaining positions are scored by damage risk, escape routes, range, line of sight, and progress toward the target. Short-term directional stability is preserved. |
+| Threat avoidance | Continuous relative trajectories, inertia, observation age, input delay, and deceleration tails are used to predict recognized enemies, projectiles, lasers, and explosions. |
+| Recovery from blocked movement | Replan, choose another firing position, or cool down the goal. If every candidate is invalid, report a wait state rather than directly changing coordinates or collision. |
+| Greed | Each floor advances through `fight → supply → loot → gather → leave`. Supply budgets and completion state are retained until the floor changes. |
+| Item allocation | Choose eligible teammates based on value, budget, and existing quantities. Stable identities break ties. A missing or stale target, or a rebuilt world, clears reservations. |
 
-出口、商品和危险机关分别有接近权限；未选中的目标不会因路径经过而自动允许触碰。武器和危险模型是近似值，未知组合不保证最优走位。
+Exits, shop items, and hazardous mechanisms each have separate interaction permissions. An unselected target is not automatically allowed to be touched just because the path passes near it. Weapon and hazard models are approximations; unknown combinations are not guaranteed to produce optimal movement.
 
-## 输入与执行预算
+## Input and Execution Budget
 
-每个渲染帧最多决策一次，仅替换移动／射击动作，UI 与人工道具操作保留。网络采集和本机预测复用同一份合成输入，持有值与按下边沿分别管理。暂停、关闭或世界失效时释放输入；超过三帧未更新的输出归零，已经发出的输入不能撤回。
+At most one decision is made per render frame. The bot replaces only movement and shooting actions; UI and manual item use remain under human control. Network capture and local prediction reuse the same synthesized input. Held values and press edges are managed separately. Input is released when paused, disabled, or when the world becomes invalid. Output that has not been updated for more than three frames is zeroed; input already sent cannot be withdrawn.
 
-观察扫描、寻路展开、候选轨迹和预测长度均有上限。规划按事件或低频更新，实时避险不等待外部服务。测试方法与按需验收范围见[开发与测试](https://github.com/BMingSY/isaac-lan/blob/main/docs/development-and-testing.md)。
+Observation scans, pathfinding expansions, candidate trajectories, and prediction horizons all have limits. Planning is updated on events or at a lower frequency; real-time threat avoidance does not wait for an external service. Testing methods and targeted acceptance scope are documented in [Development and Testing](https://github.com/BMingSY/isaac-lan/blob/main/docs/development-and-testing.md).
