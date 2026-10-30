@@ -540,7 +540,7 @@ function _IsaacLanCommand(action, value)
         lifecycle.close()
         assert(native.input_virtual())
         assert(native.net_host(tonumber(value), _IsaacLanFingerprint, modFingerprint()))
-        assert(native.net_configure_options(native.menu_room_options()), "无法载入房间规则")
+        assert(native.net_configure_options(native.menu_room_options()), "Failed to load room rules.")
         savedPlayers, savedOptions = native.net_saved_info()
     elseif action == "join" then
         bot.reset()
@@ -549,15 +549,15 @@ function _IsaacLanCommand(action, value)
         lifecycle.close()
         assert(native.input_virtual())
         local ip, port = endpoint.parse(value)
-        assert(ip, "无效的房主地址或端口")
+        assert(ip, "Invalid host address or port.")
         assert(native.net_join(ip, port, _IsaacLanFingerprint, modFingerprint()))
     elseif action == "challenge" then
-        assert(native.net_challenge(assert(tonumber(value))), "无法选择联机挑战")
+        assert(native.net_challenge(assert(tonumber(value))), "Failed to select LAN challenge.")
     elseif action == "room_options" then
-        assert(native.net_configure_options(assert(tonumber(value))), "无法修改房间规则")
+        assert(native.net_configure_options(assert(tonumber(value))), "Failed to update room rules.")
         assert(
             native.menu_room_options_save(tonumber(value)),
-            "规则已应用，但本机保存失败"
+            "Rules were applied, but could not be saved locally."
         )
     elseif action == "start" then
         local seed, difficulty, a, b, c, d = value:match("^([%w]+):(%d+):(%d+):(%d+):(%d+):(%d+)$")
@@ -566,7 +566,7 @@ function _IsaacLanCommand(action, value)
         end
         assert(
             seed and #seed == 8 and Seeds.String2Seed(seed:sub(1, 4) .. " " .. seed:sub(5)) ~= 0,
-            "种子无效，请输入八位有效种子或留空随机生成"
+            "Invalid seed. Enter a valid 8-character seed or leave it blank for a random seed."
         )
         assert(
             native.net_start(
@@ -579,20 +579,20 @@ function _IsaacLanCommand(action, value)
             )
         )
     elseif action == "retry_save" then
-        assert(native.net_retry_save(), "联机存档保存失败，请重试保存")
+        assert(native.net_retry_save(), "Failed to save multiplayer data. Please try again.")
         savedPlayers, savedOptions = native.net_saved_info()
     elseif action == "resume" then
         assert(
             native.net_resume(),
-            "无法续玩：请检查人数、加入顺序、游戏版本和存档是否一致"
+            "Unable to resume: Check the player count, join order, game versions, and save data."
         )
     elseif action == "control" then
-        assert(native.net_command(tonumber(value)), "当前玩家没有执行此操作的权限")
+        assert(native.net_command(tonumber(value)), "The current player is not allowed to perform this action.")
     elseif action == "reconnect" then
-        assert(native.net_reconnect(), "当前无法重连游戏")
+        assert(native.net_reconnect(), "Unable to reconnect right now.")
     elseif action == "leave" then
         if lifecycle.active() then
-            assert(native.net_leave(), "当前无法离开游戏")
+            assert(native.net_leave(), "Unable to leave the game right now.")
         else
             lifecycle.close()
         end
