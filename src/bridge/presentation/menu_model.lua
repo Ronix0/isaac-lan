@@ -11,19 +11,19 @@ return function(Phase, Command, endpoint)
             return nil
         end
         local reasons = {
-            version = "无法加入：Isaac LAN 版本不一致",
-            fingerprint = "无法加入：版本号相同，但构建不一致",
-            protocol = "无法加入：联机协议不一致",
-            unavailable = "无法加入：未能核对房主版本",
+            version = "Unable to join: Isaac LAN versions do not match",
+            fingerprint = "Unable to join: Version numbers match, but builds differ",
+            protocol = "Unable to join: Multiplayer protocols do not match",
+            unavailable = "Unable to join: Could not verify the host's version",
         }
         local remote = failure.remoteVersion
         return {
             reasons[failure.reason] or reasons.unavailable,
-            "房主："
-                .. (remote and remote ~= "" and remote or "未知")
-                .. "　你的版本："
+            "Host: "
+                .. (remote and remote ~= "" and remote or "Unknown")
+                .. "   Your version: "
                 .. failure.localVersion,
-            "请确认双方使用相同版本和构建的 Isaac LAN。",
+            "Make sure both players are using the same Isaac LAN version and build.",
         }
     end
     local function validPort(ui)
@@ -33,7 +33,7 @@ return function(Phase, Command, endpoint)
             ui.errorText = ""
             return true
         end
-        ui.errorText = "端口范围：1–65535"
+        ui.errorText = "Port range: 1–65535"
         return false
     end
     local function remember(ui, native)
@@ -98,67 +98,67 @@ return function(Phase, Command, endpoint)
             end
         end
         local function ruleEntry()
-            local summary = firstRule or "无"
+            local summary = firstRule or "None"
             if selectedRules > 1 then
                 summary = summary .. " +" .. (selectedRules - 1)
             end
             local index = #rows + 1
-            row("房间规则：" .. summary, function()
+            row("Room rules: " .. summary, function()
                 if not rulesLocked then
                     ui.page, ui.selection, ui.ruleScroll, ui.ruleReturn = "rules", 1, 1, index
                 end
             end, not rulesLocked, nil, nil, not host and not rulesLocked and deps.accent or nil)
         end
         if status.pendingSave == 1 then
-            row("重试保存联机存档", function()
+            row("Retry saving multiplayer progress", function()
                 command("retry_save")
             end)
-            row("返回", deps.hide)
+            row("Back", deps.hide)
         elseif not host and (status.recovering or phase == Phase.running) then
             local busy = status.recovering and (phase ~= Phase.failed or status.prepared)
             notice = status.recovering and (busy and "reconnecting" or "reconnect_failed") or nil
-            row("重连游戏", function()
+            row("Reconnect to Game", function()
                 command("reconnect")
             end, not busy)
-            row("离开游戏", function()
+            row("Leave Game", function()
                 command("leave")
             end)
         elseif modes then
-            row("官方联机", function()
+            row("Official Online", function()
                 if command("close") then
                     deps.native.menu_official()
                     deps.hide()
                 end
             end)
-            row("局域网联机", function()
+            row("LAN Multiplayer", function()
                 ui.page = "lan"
                 ui.selection = 1
             end)
-            row("返回", function()
+            row("Back", function()
                 deps.hide()
             end)
         elseif idle(phase) then
-            row("创建房间", function()
+            row("Create Room", function()
                 if validPort(ui) then
                     remember(ui, deps.native)
                     command("host", ui.port)
                 end
             end)
-            row(ui.ip == "" and "输入房主的 IP" or ui.ip, function()
+            row(ui.ip == "" and "Enter the host's IP" or ui.ip, function()
                 ui.editing = "ip"
                 deps.native.menu_text_begin(ui.ip, "ip")
             end, true, nil, "ip")
-            row("端口：" .. ui.port, function()
+            row("Port: " .. ui.port, function()
                 ui.editing = "port"
                 deps.native.menu_text_begin(ui.port, "port")
             end, true, nil, "port")
-            row("加入房间", function()
+            row("Join Room", function()
                 if validPort(ui) then
                     remember(ui, deps.native)
                     command("join", endpoint.format(ui.ip, ui.port))
                 end
             end, ui.ip ~= "")
-            row("返回", function()
+            row("Back", function()
                 ui.page = "modes"
                 ui.selection = 2
             end)
@@ -175,7 +175,7 @@ return function(Phase, Command, endpoint)
                 end, rulesEditable)
                 rows[#rows].checked = ((status.roomOptions or 0) & definition.flag) ~= 0
             end
-            row("返回", function()
+            row("Back", function()
                 back(ui)
             end)
         elseif phase == Phase.lobby and ui.page == "challenges" and host then
@@ -193,7 +193,7 @@ return function(Phase, Command, endpoint)
                     end
                 end, definition.team_available, nil, nil, deps.accent)
             end
-            row("返回", function()
+            row("Back", function()
                 back(ui)
             end)
             local preview = challenges[tostring(ids[ui.selection] or ids[1])]
@@ -225,7 +225,7 @@ return function(Phase, Command, endpoint)
                     and #choices > 0,
                 cycle
             )
-            row(ready and "取消准备" or "准备", function()
+            row(ready and "Cancel Ready" or "Ready", function()
                 command("choose", choice .. (ready and ":0" or ":1"))
             end, ready or status["eligible" .. localSlot] == true)
             if host then
@@ -239,8 +239,8 @@ return function(Phase, Command, endpoint)
                     end
                 end
                 row(
-                    challenge and ("挑战：" .. challenge.id .. " " .. challenge.name)
-                        or ({ "普通", "困难", "贪婪", "贪婪加强" })[ui.difficulty + 1],
+                    challenge and ("Challenge: " .. challenge.id .. " " .. challenge.name)
+                        or ({ "Normal", "Hard", "Greed", "Greedier" })[ui.difficulty + 1],
                     function()
                         if challenge then
                             ui.page, ui.selection = "challenges", 1
@@ -253,7 +253,7 @@ return function(Phase, Command, endpoint)
                     nil,
                     challenge and deps.accent
                 )
-                row(ui.seed == "" and "种子：随机" or ui.seed, function()
+                row(ui.seed == "" and "Seed: Random" or ui.seed, function()
                     ui.editing = "seed"
                     deps.native.menu_text_begin(ui.seed, "seed")
                 end, true, nil, "seed")
@@ -264,7 +264,7 @@ return function(Phase, Command, endpoint)
                         and status["ready" .. i] == 1
                         and status["eligible" .. i] == true
                 end
-                row("开始游戏", function()
+                row("Start Game", function()
                     local settings = (ui.seed == "" and "RANDOM" or ui.seed)
                         .. ":"
                         .. (challenge and challenge.difficulty or ui.difficulty)
@@ -277,11 +277,11 @@ return function(Phase, Command, endpoint)
                 end, allReady)
                 if not challenge and (status.savedPlayers or 0) >= 2 then
                     if (status.savedOptions or 0) ~= (status.roomOptions or 0) then
-                        row("载入上次规则", function()
+                        row("Load Previous Rules", function()
                             command("room_options", tostring(status.savedOptions or 0))
                         end, count == status.savedPlayers)
                     else
-                        row("继续上次联机", function()
+                        row("Resume Previous Session", function()
                             if command("resume") then
                                 deps.hide()
                             end
@@ -291,7 +291,7 @@ return function(Phase, Command, endpoint)
             end
             if not host and challenge then
                 row(
-                    "挑战：" .. challenge.id .. " " .. challenge.name,
+                    "Challenge: " .. challenge.id .. " " .. challenge.name,
                     function() end,
                     false,
                     nil,
@@ -302,31 +302,31 @@ return function(Phase, Command, endpoint)
             if not host then
                 ruleEntry()
             end
-            row("离开房间", function()
+            row("Leave Room", function()
                 command("close")
             end)
         elseif phase == Phase.running then
             if (status.pause or 0) == 0 then
-                row("暂停全队", function()
+                row("Pause for Everyone", function()
                     command("control", tostring(Command.pause))
                 end)
             else
-                row("恢复游戏", function()
+                row("Resume Game", function()
                     if command("control", tostring(Command.resume)) then
                         deps.hide()
                     end
                 end, localSlot == status.pauseOwner)
             end
-            row(challenge and "结束挑战（不保存）" or "保存并结束联机", function()
+            row(challenge and "End Challenge (Do Not Save)" or "Save and End Multiplayer", function()
                 command("control", tostring(Command.saveExit))
             end)
-            row("返回游戏", function()
+            row("Return to Game", function()
                 deps.hide()
             end)
         else
             notice = phase == Phase.returning and "returning" or "waiting"
             if not status.prepared then
-                row("离开房间", function()
+                row("Leave Room", function()
                     command("close")
                 end)
             end
