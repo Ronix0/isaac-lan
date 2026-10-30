@@ -1,90 +1,90 @@
-# 聊天与控制台
+# Chat and Console
 
-聊天使用一条按时间排列的记录，区分队伍文字与系统输出，不设置频道切换。外观配置见 [README 的配置选项](https://github.com/BMingSY/isaac-lan/blob/main/README.md#配置与日志)。
+Chat uses a single chronological message history that distinguishes party messages from system output. There are no channel switches. Appearance settings are documented in the [README configuration options](https://github.com/BMingSY/isaac-lan/blob/main/README.md#configuration-and-logs).
 
-新版聊天控制台只在联机大厅、联机游戏及联机等待期间启用。单人游戏沿用原版控制台和按键行为；退出联机后停止接管输入及绘制聊天界面。
+The updated chat console is enabled only in the multiplayer lobby, during multiplayer runs, and while waiting in multiplayer. Single-player continues to use the original console and key behavior. After leaving multiplayer, the extension stops capturing input and drawing the chat interface.
 
-创建或加入房间后，在大厅按 `~` 打开聊天，Enter 发送，`~` 或 Esc 关闭；手柄使用 L3 开关。尚未建立会话的地址输入页面不启用队伍聊天。编辑地址、端口或种子期间，键盘只用于字段编辑，不触发游戏快捷键或聊天开关；Enter 确认，Esc 结束编辑，手柄确认／返回仍可使用。
+After creating or joining a room, press `~` in the lobby to open chat. Press Enter to send, and `~` or Esc to close it. On a controller, use L3 to toggle chat. The address-entry page does not enable party chat before a session has been established. While editing an address, port, or seed, the keyboard is reserved for editing the field and does not trigger game shortcuts or the chat toggle. Enter confirms, Esc ends editing, and controller confirm/back inputs remain available.
 
-## 职责与数据流
+## Responsibilities and Data Flow
 
-- [core/chat.h](https://github.com/BMingSY/isaac-lan/blob/main/src/core/chat.h) 持有字符／字节限制、UTF-8 编辑和历史记录；Win32 输入适配在版本后端，处理 `~`、剪贴板和 IME，编辑期间隔离本机玩法输入，关闭后需释放已按住的动作键。
-- [runtime/chat.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/runtime/chat.lua) 持有命令队列、消息记录、输出归属、接收范围和去重。`/console`、`/c` 后的文本直接交给原版解析，不维护原版命令白名单；`/e` 在本机完成，掷骰由房主使用独立随机源生成一次。[chat_dice.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/runtime/chat_dice.lua) 负责掷骰表达式的解析、边界检查与求值，通过参数接收随机源，不读取游戏状态。
-- [runtime/teleport.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/runtime/teleport.lua) 负责 `/tp` 参数、房间查找和到达事务。房主在输入者的角色作用域内选择已有目标，由原生房间组件执行迁移；到达后核对房间和角色身份，再完成玩家附近的落点放置。
-- [presentation/chat.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/presentation/chat.lua) 只处理本机输入状态、布局、滚动和绘制；文字气泡只渲染同房角色，使用半透明的原版气泡素材。表情选择、动画和气泡复用游戏已有轮盘及角色表情组件；原版资源从游戏读取，不重新分发。背景配置通过启动装配注入，不参与联网一致性。
-- [chat_wire.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/runtime/chat_wire.lua) 编解码请求、输出、表情。底层 `communication` 是独立于 Mod 动作与世界快照的可靠字节消息；网络层不解析聊天内容。协议版本以 [protocol.h](https://github.com/BMingSY/isaac-lan/blob/main/src/net/protocol.h) 为准，同版本扩展才可联机。
+- [core/chat.h](https://github.com/BMingSY/isaac-lan/blob/main/src/core/chat.h) owns character/byte limits, UTF-8 editing, and history. The Win32 input adapter is in the version backend and handles `~`, the clipboard, and IME. During editing it isolates local gameplay input; when editing closes, any held action keys must be released.
+- [runtime/chat.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/runtime/chat.lua) owns the command queue, message history, output ownership, recipient scope, and deduplication. Text after `/console` or `/c` is passed directly to the original parser; the extension does not maintain an allowlist of original commands. `/e` is handled locally. Dice rolls are generated once by the host using an independent random source. [chat_dice.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/runtime/chat_dice.lua) parses, validates, and evaluates dice expressions. It receives the random source as a parameter and does not read game state.
+- [runtime/teleport.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/runtime/teleport.lua) handles `/tp` arguments, room lookup, and arrival transactions. The host selects an existing destination within the sender's character scope, and the native room component performs the transition. After arrival, the room and character identities are checked before placing the player near the destination.
+- [presentation/chat.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/presentation/chat.lua) handles only local input state, layout, scrolling, and rendering. Text bubbles are drawn only for characters in the same room, using translucent original game bubble assets. Emote selection, animation, and bubbles reuse the game's existing wheel and character-emote components. Original assets are loaded from the game and are not redistributed. Background settings are injected during startup and do not participate in network consistency.
+- [chat_wire.lua](https://github.com/BMingSY/isaac-lan/blob/main/src/bridge/runtime/chat_wire.lua) encodes and decodes requests, output, and emotes. The underlying `communication` channel is a reliable byte-message channel independent of mod actions and world snapshots. The network layer does not parse chat content. The protocol version is defined by [protocol.h](https://github.com/BMingSY/isaac-lan/blob/main/src/net/protocol.h); players can connect only when their extension versions match.
 
-输入者的连接槽由传输层确定。原版命令和 `/tp` 在房主的更新安全边界执行，使用输入者的角色与房间上下文；排队时记录局次、世界代次、房间和维度，执行前不再匹配则取消。`rewind` 使用既有回退事务。没有玩家权限分级；同步方式不改变成员使用命令的资格。
+The transport layer determines the sender's connection slot. Original game commands and `/tp` execute at a safe host update boundary, using the sender's character and room context. The queue records the run, world generation, room, and dimension; if they no longer match before execution, the request is cancelled. `rewind` uses the existing rewind transaction. There is no player permission hierarchy; synchronization does not change which members are allowed to use commands.
 
-已解析的斜杠命令提交后先写入本机聊天记录，显示为 `system: /c g c333`，不广播、不显示气泡；原版命令没有返回文字时也保留这条记录。记录表示提交内容，执行错误只向提交者输出。输入开头的空白不影响命令识别；缺少控制台前缀的 `lua`、`luarun` 和含 `dofile(...)`、`loadfile(...)` 的文本只在本机报错，不作为普通聊天发送。掷骰结果包含执行者编号、表达式、逐骰明细与总和，例如 `1P 掷骰：2D6 = [3 + 5] = 8`；单骰省略重复的总和。接收者的聊天记录和对应角色气泡使用相同文字。
+After a slash command is parsed and submitted, it is first written to the local chat history. It appears as `system: /c g c333`, is not broadcast, and does not create a bubble. The record is retained even if the original command produces no output. It represents the submitted command; execution errors are sent only to the submitting player. Leading whitespace does not affect command recognition. Text beginning with `lua`, `luarun`, or containing `dofile(...)` or `loadfile(...)` without the console prefix produces a local error and is not sent as ordinary chat. Dice results include the player number, expression, individual dice results, and total; for example, `1P rolled: 2D6 = [3 + 5] = 8`. A single die omits a redundant total. The recipient's chat history and corresponding character bubble use the same text.
 
-文字聊天和掷骰默认全队共享，末尾的独立参数 `--room` 将本条消息限定为房间共享；该参数不解析原版控制台或 `/e` 的参数内容。房主处理房间消息时核对发送者提交时的局次、世界代次、房间和维度；上下文失效或游戏未就绪时，只向发送者报告失败，不掷骰或转发。接收者按处理时的房间与维度选择，并排除已断开的成员；房主不在该房间时也不写入本机记录。房间输出正文带 `【房间】` 标记，沿用现有文本消息格式；积压输出保留分发时选定的接收者。
+Text chat and dice rolls are shared with the whole party by default. Adding the separate trailing argument `--room` limits the message to the current room. This argument is not parsed from original console commands or from `/e` arguments. When the host handles a room message, it checks the sender's run, world generation, room, and dimension as recorded at submission time. If the context is invalid or the game is not ready, only the sender is notified; the message is not rolled or forwarded. Recipients are selected using their room and dimension at processing time, excluding disconnected members. The host does not add the message to its local history if it is not in that room. Room output is prefixed with `[Room]` and uses the existing text-message format. Queued output retains the recipients selected when it was distributed.
 
-`/h`、`/help` 在本机记录中列出命令、别名和掷骰范围，不广播、不显示气泡。`/c` 不补充原版没有的命令，`/c help` 仍按当前游戏及已加载 Mod 的行为执行。
+`/h` and `/help` list commands, aliases, and dice limits in the local history. They are not broadcast and do not create bubbles. `/c` does not add commands that are absent from the original game; `/c help` continues to behave according to the current game and loaded mods.
 
-`/feedback`、`/fb` 在提交者本机打包日志并上传，结果只写入本机记录，不经过房主；收集范围与上传结果见[反馈上传](https://github.com/BMingSY/isaac-lan/blob/main/docs/feedback.md)。
+`/feedback` and `/fb` package and upload logs locally on the submitting player's instance. The result is written only to local history and does not pass through the host. See [Feedback Upload](https://github.com/BMingSY/isaac-lan/blob/main/docs/feedback.md) for the collection scope and upload results.
 
-1P～4P 的发言和带气泡的命令结果分别使用红、蓝、金、绿四种字体颜色。深色聊天面板使用较亮的色值，浅色气泡使用同色系深色文字；本机命令记录及不带气泡的系统输出沿用配置的文字颜色。自定义图片背景上的文字加深色阴影，减少浅色图片对可读性的影响。
+Messages and bubbled command results from P1–P4 use red, blue, gold, and green text respectively. The dark chat panel uses brighter values; light bubbles use darker text from the same color family. Local command records and system output without bubbles use the configured text color. Text on custom image backgrounds receives a dark shadow to improve readability over light areas.
 
-聊天背景默认使用 70% 不透明度的纯色，颜色与透明度可配置；安装包不附带背景图片。配置自定义图片时，由 [chat_background.cpp](https://github.com/BMingSY/isaac-lan/blob/main/src/presentation/chat_background.cpp) 在启动时准备，可指定相对 `config.ini` 的路径或绝对路径。支持 PNG、JPG/JPEG、BMP，按文件内容识别格式，不依赖扩展名；不支持 GIF。原图只读，PNG 校验后原样缓存，其他格式解码后转为 PNG 缓存，保留所选画面的像素与透明度。图片按展开面板的大小缩放并随面板移动；收起或近期消息减少时，只裁掉图片上部，底部的位置与缩放保持不变。配置透明度再与图片透明度相乘。输入图片限制为 16 MiB、单边 4096 像素且总计不超过 8 Mi 像素，完成解码校验后将 PNG 缓存和动画描述写入 `isaac-lan/cache/chat`。Lua 通过普通 Sprite API 加载，帧内不读盘。未配置图片时不创建缓存；图片缺失、损坏或缓存不可用时回退纯色并记录日志，不增加界面提示。
+The chat background defaults to a solid color with 70% opacity. Color and opacity are configurable; the installation package does not include background images. When a custom image is configured, [chat_background.cpp](https://github.com/BMingSY/isaac-lan/blob/main/src/presentation/chat_background.cpp) prepares it at startup. The path may be relative to `config.ini` or absolute. PNG, JPG/JPEG, and BMP are supported; the format is detected from file contents rather than the extension. GIF is not supported. The original image is read-only. PNG files are validated and cached unchanged; other formats are decoded and cached as PNG, preserving the selected image's pixels and transparency. The image is scaled to the expanded panel and moves with it. When the panel is collapsed or fewer recent messages are shown, only the upper part of the image is cropped; the bottom position and scale remain unchanged. Configured opacity is multiplied by the image's own transparency. Input images are limited to 16 MiB, 4096 pixels on either side, and 8 megapixels total. After decoding and validation, the PNG cache and animation description are written to `isaac-lan/cache/chat`. Lua loads the image through the regular Sprite API; no disk access occurs during a frame. No cache is created when no image is configured. If the image is missing, damaged, or its cache is unavailable, the interface falls back to a solid color and logs the issue without adding an on-screen message.
 
-面板默认根据属性栏、物品栏和 HUD 偏移预留边距。输入打开时可按住聊天记录区域拖动，输入行不启动拖动；手动位置只受屏幕边界限制，不再避让 HUD。收起、重新打开及会话变化保留本次运行内的位置，HUD 设置变化不移动手动位置；画面尺寸变化时将面板约束在屏幕内并按宽度换行，退出游戏后恢复自动布局。拖动状态在关闭输入或失焦时结束。空内容或仅空白字符按 Enter 或手柄确认时直接忽略，不产生记录，也不清空草稿、关闭输入框或重置滚动位置。
+By default, the panel reserves margins based on the stat bar, item bar, and HUD offset. While input is open, the message-history area can be dragged; the input row does not initiate dragging. A manually positioned panel is constrained only by screen boundaries and no longer avoids the HUD. Its position is retained during the current run when collapsed, reopened, or when the session changes. HUD setting changes do not move a manually positioned panel. When the screen size changes, the panel is kept within the screen and text is wrapped to its width. Automatic layout is restored after leaving the game. Dragging ends when input closes or the window loses focus. Empty or whitespace-only input submitted with Enter or controller confirm is ignored; it does not create a record, clear the draft, close the input, or reset the scroll position.
 
-输入打开时，每条消息的最后一条可见行右侧提供复制按钮，点击后复制整条原文，包括当前滚动范围外的内容；不附加玩家编号或 `system:` 等显示前缀。按钮区域不启动拖动，按下后在同一消息的按钮上释放才执行复制，不改变输入草稿或发送消息。成功时图标短暂变为勾，失败时短暂变红；收起后不显示按钮。
+When input is open, a copy button appears to the right of the last visible line of each message. Clicking it copies the entire original message, including content outside the current scroll range, without adding a player number or display prefixes such as `system:`. The button area does not initiate dragging. Copying occurs only when the pointer is pressed and released on the button for the same message. It does not change the draft or send a message. On success, the icon briefly changes to a check mark; on failure, it briefly turns red. The button is hidden when the panel is collapsed.
 
-## 传送命令
+## Teleport Command
 
-`/tp` 以输入者及其受控身体为传送对象，既有随行实体处理和路线进入规则照常执行。所有参数不区分大小写；`/tp`、`/tp help`、`/tp h` 在本机显示用法，其他操作需要联机游戏就绪。结果仅输入者可见，不显示气泡。
+`/tp` targets the sender and the bodies controlled by that sender. Existing follower handling and route-entry rules remain in effect. Arguments are case-insensitive. `/tp`, `/tp help`, and `/tp h` show usage locally. Other operations require a ready multiplayer game. Results are visible only to the sender and do not create bubbles.
 
-| 写法 | 含义 |
+| Syntax | Meaning |
 | --- | --- |
-| `/tp r x y`、`/tp room x y` | 以本层起始房为 `(0, 0)`，向右为 X 正方向、向上为 Y 正方向，选择当前维度中的地图格子 |
-| `/tp start`、`/tp st` | 等价于 `/tp r 0 0` |
-| `/tp 1p`～`/tp 4p` | 到在线玩家所在的房间与维度，在目标当前位置附近选择可站立格子；同房也能使用 |
-| `/tp list`、`/tp l` | 列出当前维度已生成的房间，以及已有的地图外交易房／错误房；显示类型、坐标与探索／清理状态 |
-| `/tp boss`、`/tp b` | Boss 房 |
-| `/tp shop`、`/tp sh` | 商店 |
-| `/tp treasure`、`/tp t` | 宝箱房 |
-| `/tp secret`、`/tp s` | 一秘 |
-| `/tp supersecret`、`/tp ss` | 二秘 |
-| `/tp ultrasecret`、`/tp us` | 红隐 |
-| `/tp angel`、`/tp a` | 天使房 |
-| `/tp devil`、`/tp d` | 恶魔房 |
-| `/tp error`、`/tp e` | 错误房 |
+| `/tp r x y`, `/tp room x y` | Select a map cell in the current dimension, using the starting room as `(0, 0)`, with positive X to the right and positive Y upward. |
+| `/tp start`, `/tp st` | Equivalent to `/tp r 0 0`. |
+| `/tp 1p`–`/tp 4p` | Move to the online player's room and dimension, choosing a walkable cell near their current position. This also works when both players are already in the same room. |
+| `/tp list`, `/tp l` | List generated rooms in the current dimension, along with existing off-map shop/trade rooms and error rooms. Show type, coordinates, and visited/cleared state. |
+| `/tp boss`, `/tp b` | Boss Room. |
+| `/tp shop`, `/tp sh` | Shop. |
+| `/tp treasure`, `/tp t` | Treasure Room. |
+| `/tp secret`, `/tp s` | Secret Room. |
+| `/tp supersecret`, `/tp ss` | Super Secret Room. |
+| `/tp ultrasecret`, `/tp us` | Ultra Secret Room. |
+| `/tp angel`, `/tp a` | Angel Room. |
+| `/tp devil`, `/tp d` | Devil Room. |
+| `/tp error`, `/tp e` | Error Room. |
 
-坐标按地图格子计数，不按过门次数计数。大房间的任意实际占用格都指向同一房间，L 形缺角、地图空位与越界坐标不构成目标。列表中的大房间使用其有效锚点坐标。同类型存在多个房间时，返回候选坐标，不随机选择；地图外特殊房间使用类型命令。
+Coordinates count map cells, not the number of doors crossed. Any occupied cell of a large room points to the same room. Missing corners of L-shaped rooms, empty map cells, and out-of-bounds coordinates are not valid destinations. Large rooms in the list use their valid anchor coordinate. If multiple rooms of the same type exist, the command returns candidate coordinates instead of choosing randomly. Off-map special rooms use their room-type command.
 
-目标必须已经生成且仍存在；未探索、门未开启和入口不连通不妨碍传送。红隐与已创建的红房间可进入，尚未创建的红房间仍是空位。命令不使用卡牌，不生成、重置或替换房间，也不改变本层天使／恶魔房选择。指定目标的迁移跳过混乱诅咒改送，原生进入效果仍正常执行。
+A destination must already have been generated and still exist. Unvisited rooms, unopened doors, and disconnected entrances do not prevent teleportation. Ultra Secret Rooms and already-created red rooms can be entered; a red room that has not yet been created remains an empty cell. The command does not use cards, generate, reset, or replace rooms, or change the floor's Angel/Devil Room selection. A targeted transition bypasses the Chaos Curse's random redirection, while the original room-entry effects still run normally.
 
-每名参与者同时最多一个待完成传送；重复请求沿用聊天去重。实际到达才报告成功，3 秒未确认则取消尚未执行的请求。角色替换、来源房间意外变化、目标玩家离开／掉线、局次或楼层代次变化会使事务失效；不会把已经到达的玩家送回，也不会让旧楼层的取消操作影响新楼层。退出或重建聊天会话清理事务。
+Each participant can have at most one pending teleport at a time; duplicate requests are handled by chat deduplication. Success is reported only after arrival is confirmed. If it is not confirmed within 3 seconds, the pending request is cancelled. Character replacement, an unexpected change of source room, the target player leaving or disconnecting, or a change of run/floor generation invalidates the transaction. It does not send a player back after they have already arrived, and a cancellation from an old floor cannot affect a new floor. Leaving or rebuilding the chat session clears transactions.
 
-## 输出契约
+## Output Contract
 
-组件内部 `chat.output(text, options)` 将可见范围和气泡分开表达；主机上的命令执行期间，省略 `owner` 时继承执行者。装配暴露 `_IsaacLanChatOutput`，供原版 `/console lua ...` 等同步调用使用，它不是第三方稳定 API。
+The internal `chat.output(text, options)` API expresses visibility and bubble display separately. During command execution on the host, an omitted `owner` inherits the executor. The startup assembly exposes `_IsaacLanChatOutput` for synchronous calls such as original `/console lua ...`; this is not a stable third-party API.
 
-玩法组件调用的 `chat.roll(owner, sides)` 与聊天命令共用求值和输出路径，仍返回单颗骰子的数值，并向全队输出结果；仅房主可为已连接成员掷骰，失败返回 `nil`。
+Gameplay components can call `chat.roll(owner, sides)`. It shares the evaluation and output path with chat commands, still returns the numeric result of a single die, and broadcasts the result to the party. Only the host can roll for a connected member; failure returns `nil`.
 
-| 字段 | 默认 | 含义 |
+| Field | Default | Meaning |
 | --- | --- | --- |
-| `audience` | `"self"` | `"self"` 仅给执行者，`"party"` 给所有已连接成员，`"room"` 给与执行者同房、同维度的已连接成员 |
-| `owner` | 当前执行者，否则本机槽 | 从 0 开始的角色归属；决定气泡跟随的角色 |
-| `bubble` | `false` | 是否同时在角色头顶显示 |
-| `kind` | `"system"` | `"system"` 为系统结果，`"team"` 为队伍发言 |
+| `audience` | `"self"` | `"self"` sends only to the executor; `"party"` sends to all connected members; `"room"` sends to connected members in the executor's room and dimension. |
+| `owner` | Current executor, otherwise local slot | Character owner, using a zero-based slot. Determines which character the bubble follows. |
+| `bubble` | `false` | Whether to also display the message above the character's head. |
+| `kind` | `"system"` | `"system"` for system output, `"team"` for party messages. |
 
 ```lua
-chat.output("共享结果", { audience = "party", bubble = true })
-chat.output("房间结果", { audience = "room", bubble = true })
-chat.output("本机提示", { audience = "self" })
+chat.output("Shared result", { audience = "party", bubble = true })
+chat.output("Room result", { audience = "room", bubble = true })
+chat.output("Local notice", { audience = "self" })
 ```
 
-广播和远程定向输出从房主发出，客机提交命令请求，不能自行选择别人的身份。`"room"` 输出以 `owner` 当前所在房间筛选接收者；游戏未就绪或该角色没有有效房间时返回 `false`。原版执行期间同步产生的 `Console.Print` 文本回给执行者；异步回调的输出不自动归入已经结束的命令。需要共享结果的命令显式调用输出接口，避免把所有原版日志广播。
+Broadcast and remote-targeted output originate from the host. Guests submit command requests and cannot choose another player's identity. `"room"` output filters recipients using the room currently occupied by `owner`; it returns `false` if the game is not ready or the character has no valid room. Synchronous `Console.Print` output produced during original command execution is returned to the executor. Output from asynchronous callbacks is not automatically attributed to a command that has already finished. Commands that need to share results must explicitly call the output interface, rather than broadcasting all original game logs.
 
-## 生命周期与限制
+## Lifecycle and Limits
 
-文字聊天输入最多 60 个 Unicode 标量值（包含末尾范围参数），命令最多 2048 个 UTF-8 字节。掷骰面数为 1～999，一次表达式最多 20 颗基础骰、20 项，加减常数为 0～9999；每颗百分骰可附带 1～2 颗奖惩骰。奖惩骰共享个位、独立生成十位候选，先将 `00` 转为 100，再按奖励取低、惩罚取高。整条表达式校验通过后才生成随机数；任何一次随机源失败都取消整个结果，仅通知发送者。房间标记计入输出字节限制，超限返回 `false`。
+Text chat is limited to 60 Unicode scalar values per message, including a trailing scope argument. Commands are limited to 2048 UTF-8 bytes. Dice may have 1–999 sides; one expression can contain at most 20 base dice and 20 terms, with addition/subtraction constants from 0–9999. Each percentile die can have 1–2 bonus or penalty dice attached. Bonus and penalty dice share the units digit and independently generate tens-digit candidates. A result of `00` is converted to 100 before the bonus takes the lower result or the penalty takes the higher result. The entire expression is validated before random numbers are generated. If the random source fails at any point, the entire result is cancelled and only the sender is notified. The room marker counts toward the output byte limit; exceeding it returns `false`.
 
-一次粘贴的换行转换为空格，不拆成多次提交。消息历史保留 200 条，输入历史 64 条，均只保存在内存中，不写入联机日志或聊天存档；原版命令自身的日志行为不变。原版同步返回最多采集 16 KiB，并分行、按 UTF-8 边界分包。
+Newlines in a single paste are converted to spaces; the paste is not split into multiple submissions. Message history retains 200 entries and input history retains 64. Both exist only in memory and are not written to multiplayer logs or chat saves. The original game's own logging behavior is unchanged. Synchronous output from original commands is collected up to 16 KiB, split into lines, and packetized at UTF-8 boundaries.
 
-每个请求携带随机会话标记和递增序号，重复请求不重复执行或掷骰。传输消息最多 3072 字节，每发送者待收最多 32 条、每秒最多 64 条；命令待执行最多 16 条。暂时积压的输出按接收者保持顺序，重试最多 5 秒，待发最多 64 条。关闭连接移除对应传输消息，关闭／重新加入会话清理本机记录、草稿、气泡和命令；换层清理临时气泡，不清理文字历史。
+Each request includes a random session token and an increasing sequence number, preventing duplicate execution or duplicate dice rolls. Transport messages are limited to 3072 bytes. Each sender can have up to 32 pending received messages and 64 messages per second; the command queue holds up to 16 commands. Temporarily queued output preserves order per recipient, retries for at most 5 seconds, and holds up to 64 pending messages. Closing a connection removes its transport messages. Closing or rejoining a session clears local history, drafts, bubbles, and commands. Changing floors clears temporary bubbles but does not clear text history.
 
-气泡最多显示三行，超出用省略号；完整内容保留在文字记录中。停留时间按内容长度为 4～8 秒，靠近屏幕边缘时限制到画面范围，相邻文字气泡优先错开到附近空位。表情不进入文字记录，不支持用户图片导入。手柄可操作开关、确认、取消和表情选择，文字编辑使用键盘，没有手柄软键盘。
+Bubbles display at most three lines; longer messages are truncated with an ellipsis. The complete content remains in text history. Display duration is 4–8 seconds depending on message length. Bubbles near screen edges are constrained to the visible area, and adjacent bubbles are preferentially shifted to nearby free positions. Emotes do not enter text history, and importing user images is not supported. A controller can operate the chat toggle, confirm, cancel, and emote selection. Text editing requires a keyboard; there is no controller soft keyboard.
