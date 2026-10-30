@@ -22,7 +22,7 @@ return function(root, native, modules)
     ModCallbacks.MC_PRE_USE_ITEM = ModCallbacks.MC_PRE_USE_ITEM or 13
     native.net_room_options = function()
         return {
-            { flag = 1, key = "friendlyFire", name = "队友伤害" },
+            { flag = 1, key = "friendlyFire", name = "Friendly Fire" },
             { flag = 2, key = "sharedClearCharge" },
             { flag = 4, key = "lootRoll" },
             { flag = 8, key = "specialRoomGather" },
