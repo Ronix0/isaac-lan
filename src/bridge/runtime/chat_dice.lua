@@ -11,7 +11,7 @@ function dice.help(maxSides)
             .. " dice per roll; N ranges from 1 to "
             .. maxSides,
         "Dice can be combined with addition and subtraction, e.g. /d6+2d3+1",
-        "/d100b /d100p: Bonus/penalty rolls; append a quantity from 1 to " .. maxExtra .. "  to set the quantity",
+        "/d100b /d100p: Bonus/penalty rolls; append a number from 1 to " .. maxExtra .. " to choose how many extra dice to roll",
     }
 end
 
